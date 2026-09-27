@@ -186,7 +186,11 @@ async def handle_error(page, chat_id, step_name, error_msg):
     print(f"Error at {step_name}: {error_msg}")
     screenshot_path = f"error_{step_name}.png"
     try:
-        await page.screenshot(path=screenshot_path, full_page=True)
+        try:
+            await page.screenshot(path=screenshot_path, full_page=True)
+        except Exception as se:
+            print(f"فشل أخذ السكرين شوت: {se}")
+
         safe_error_msg = str(error_msg)[:900] + "\n... (تم تقصير الرسالة)" if len(str(error_msg)) > 800 else str(error_msg)
 
         await client.send_file(
@@ -194,7 +198,8 @@ async def handle_error(page, chat_id, step_name, error_msg):
             file=screenshot_path,
             caption=f"❌ حدث خطأ في مرحلة:\n**{step_name}**\n\nتفاصيل الخطأ:\n`{safe_error_msg}`"
         )
-        os.remove(screenshot_path)
+        if os.path.exists(screenshot_path):
+            os.remove(screenshot_path)
     except Exception as e:
         await client.send_message(chat_id, f"❌ حدث خطأ قاتل وما كدرت اخذ سكرين: {str(e)}")
 
@@ -369,6 +374,8 @@ async def process_sso_link(chat_id, sso_url):
     await client.send_message(chat_id, "⏳𝙡𝙚𝙩 𝙢𝙚 𝙨𝙚𝙚 𝙬𝙝𝙖𝙩 𝙄 𝙘𝙖𝙣 𝙙𝙤...")
 
     temp_dir = tempfile.mkdtemp()
+    page = None
+    context = None
 
     async with async_playwright() as p:
         try:
@@ -379,11 +386,21 @@ async def process_sso_link(chat_id, sso_url):
                 args=[
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-software-rasterizer',
+                    '--disable-extensions',
+                    '--disable-background-networking',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--disable-default-apps',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',
                     '--disable-blink-features=AutomationControlled',
-                    '--disable-infobars',
-                    '--window-size=1920,1080'
+                    '--window-size=1280,720'
                 ],
-                viewport={'width': 1920, 'height': 1080},
+                viewport={'width': 1280, 'height': 720},
                 locale='en-US'
             )
 
@@ -432,13 +449,25 @@ async def process_sso_link(chat_id, sso_url):
             await generate_and_send_dark_file(chat_id, domain)
 
         except PlaywrightTimeoutError as e:
-            await handle_error(page, chat_id, "انتهى وقت الانتظار (Timeout)", str(e))
+            if page:
+                await handle_error(page, chat_id, "انتهى وقت الانتظار (Timeout)", str(e))
+            else:
+                await client.send_message(chat_id, f"❌ Timeout قبل فتح المتصفح: {str(e)}")
         except Exception as e:
-            await handle_error(page, chat_id, "خطأ عام", str(e))
+            if page:
+                await handle_error(page, chat_id, "خطأ عام", str(e))
+            else:
+                await client.send_message(chat_id, f"❌ خطأ عام: {str(e)}")
         finally:
-            if 'context' in locals():
-                await context.close()
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            try:
+                if context:
+                    await context.close()
+            except Exception as ce:
+                print(f"خطأ عند إغلاق المتصفح: {ce}")
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as re:
+                print(f"خطأ عند حذف المجلد المؤقت: {re}")
 
 
 # ==========================================
