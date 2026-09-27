@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# تثبيت المتطلبات النظامية لـ Chrome و Playwright
+# تثبيت المتطلبات النظامية لـ Chrome و Playwright و Xvfb
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     libxdamage1 \
     libxrandr2 \
     xdg-utils \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # تثبيت Google Chrome الرسمي
@@ -37,12 +38,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# تثبيت متصفح Playwright واعتمادياته
+# تثبيت متصفح Playwright (chromium فقط لتقليل الحجم)
 RUN python -m playwright install chromium
 RUN python -m playwright install-deps chromium
 
 # نسخ كود البوت
 COPY GC.py .
 
-# أمر التشغيل عبر Xvfb (وضع مرئي وهمي)
-CMD ["xvfb-run", "-a", "python3", "GC.py"]
+# تشغيل عبر Xvfb مع تحديد الدقة لتقليل استهلاك الذاكرة
+CMD ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", "python3", "GC.py"]
