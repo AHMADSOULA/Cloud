@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — مع تقارير + تصوير كل خطوة
+تنسيق العملية — سريع
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -38,7 +38,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     log.info(f"🚀 SSO flow — project={project_id}")
 
-    console = CloudConsole(context, sender=sender, user_tag=user_tag)
+    console = CloudConsole(context, sender=None, user_tag=user_tag)
 
     async def report(num, text, ok=False):
         if not sender:
@@ -51,50 +51,53 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             pass
 
-    # ✅ صفحة وحدة (باش الجلسة ما تضيعش)
+    # ✅ صفحة وحدة
     page = await context.new_page()
     try:
         # ═══════ 1) SSO ═══════
         await report(1, "فتح رابط الطالب...")
-        await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
+        try:
+            await page.goto(sso_url, wait_until="domcontentloaded", timeout=45000)
+        except Exception:
+            await page.goto(sso_url, wait_until="commit", timeout=45000)
         await report(1, "", ok=True)
 
         # ═══════ 2) TOS ═══════
         await report(2, "")
         try:
             await console.step1_welcome_screen(page)
-            await page.wait_for_timeout(2000)
             await report(2, "", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step1: {e}")
+            await report(2, "متجاوز", ok=False)
 
         # ═══════ 3) Terms Dialog ═══════
         await report(3, "")
         try:
             await console.step2_terms_dialog(page)
-            await page.wait_for_timeout(2000)
-            await report(3, f"(Project: {project_id})", ok=True)
+            await report(3, "", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step2: {e}")
+            await report(3, "متجاوز", ok=False)
 
+        # نستناو Dashboard (اختياري)
         try:
-            await page.wait_for_url("**/home/dashboard**", timeout=60000)
+            await page.wait_for_url("**/home/dashboard**", timeout=30000)
         except Exception:
-            log.warning("⚠️ ما وصلناش Dashboard")
+            pass
 
-        await page.wait_for_timeout(1500)
-
+        await page.wait_for_timeout(500)
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # ═══════ 4) Enable API ═══════
+        # ═══════ 4) Enable API — اختياري ═══════
         await report(4, "تفعيل Cloud Run API...")
         try:
             await console.step3_enable_api(page, project_id, authuser)
             await report(4, "", ok=True)
         except Exception as e:
-            log.warning(f"⚠️ step3 فشل: {e}")
-            await report(4, "API مؤكد، متابعة...", ok=False)
+            log.warning(f"⚠️ step3 فشل (نكملو): {e}")
+            await report(4, "متابعة...", ok=False)
 
         # ═══════ 5) Create Cloud Run ═══════
         await report(5, "فتح Cloud Run...")
@@ -104,21 +107,16 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception as e:
             raise RuntimeError(f"فشل Cloud Run: {e}")
 
-        # ═══════ 6) ═══════
-        await report(6, "تعبئة الحقول...")
-        await page.wait_for_timeout(1500)
+        # ═══════ 6 ═══════
         await report(6, "", ok=True)
 
-        # ═══════ 7) ═══════
-        await report(7, "Create الخدمة...")
-        await page.wait_for_timeout(1500)
+        # ═══════ 7 ═══════
         await report(7, "Create", ok=True)
 
-        # ═══════ 8) ═══════
+        # ═══════ 8 ═══════
         await report(8, "انتظار رابط النشر...")
         final_url = await console.step5_get_deployed_url(page)
         domain = extract_domain_from_service_url(final_url)
-
         await report(8, f"(Domain: {domain})", ok=True)
 
     finally:
