@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — سريع
+تنسيق العملية — تقرير وحدة + طلب كلمة السر
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -31,6 +31,40 @@ def extract_authuser(page_url: str) -> str:
         return '1'
 
 
+def extract_email_from_url(url: str) -> str:
+    """يستخرج الإيميل من رابط SSO"""
+    try:
+        # URL encoded
+        m = re.search(r'Email%3D([^%&]+%40qwiklabs\.net)', url or "")
+        if m:
+            from urllib.parse import unquote
+            return unquote(m.group(1))
+
+        m = re.search(r'Email=([^&\s#]+@qwiklabs\.net)', url or "")
+        if m:
+            return m.group(1)
+
+        # أي إيميل
+        m = re.search(r'([a-zA-Z0-9\.\-]+@qwiklabs\.net)', url or "")
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def extract_password_from_url(url: str) -> str:
+    """يستخرج كلمة السر من رابط SSO"""
+    try:
+        m = re.search(r'Password=([^&\s#]+)', url or "")
+        if m:
+            from urllib.parse import unquote
+            return unquote(m.group(1))
+    except Exception:
+        pass
+    return None
+
+
 async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag="@user") -> dict:
     project_id = extract_project_id(sso_url)
     if not project_id:
@@ -40,14 +74,19 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
-    async def report(num, text, ok=False):
-        if not sender:
+    # ✅ رسالة وحدة تتبدل
+    status_msg = None
+    if sender:
+        try:
+            status_msg = await sender.reply_text("🚀 جاري التنفيذ... [0/8]")
+        except Exception:
+            status_msg = None
+
+    async def update_status(step: int, text: str = ""):
+        if not status_msg:
             return
         try:
-            if ok:
-                await sender.reply_text(f"[{user_tag}] • {num} ✅ {text}")
-            else:
-                await sender.reply_text(f"[{user_tag}] • {num}) {text}")
+            await status_msg.edit_text(f"🚀 جاري التنفيذ... [{step}/8] {text}")
         except Exception:
             pass
 
@@ -55,30 +94,25 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
     page = await context.new_page()
     try:
         # 1) SSO
-        await report(1, "فتح رابط الطالب...")
+        await update_status(1, "فتح الرابط")
         try:
             await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
         except Exception:
             await page.goto(sso_url, wait_until="commit", timeout=60000)
-        await report(1, "", ok=True)
 
         # 2) TOS
-        await report(2, "")
+        await update_status(2, "TOS")
         try:
             await console.step1_welcome_screen(page)
-            await report(2, "", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step1: {e}")
-            await report(2, "متجاوز", ok=False)
 
         # 3) Terms Dialog
-        await report(3, "")
+        await update_status(3, "Terms Dialog")
         try:
             await console.step2_terms_dialog(page)
-            await report(3, f"(Project: {project_id})", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step2: {e}")
-            await report(3, "متجاوز", ok=False)
 
         # نستناو Dashboard
         try:
@@ -90,37 +124,40 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # 4) Enable API (اختياري)
-        await report(4, "تفعيل Cloud Run API...")
+        # 4) Enable API
+        await update_status(4, "تفعيل API")
         try:
             await console.step3_enable_api(page, project_id, authuser)
-            await report(4, "", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step3: {e}")
-            await report(4, "متابعة...", ok=False)
 
         # 5) Create Cloud Run
-        await report(5, "فتح Cloud Run...")
+        await update_status(5, "إنشاء Cloud Run")
         try:
             await console.step4_create_cloud_run(page, project_id, authuser, image)
-            await report(5, "", ok=True)
         except Exception as e:
             await console._shot(page, "❌ step4 فشل")
             raise RuntimeError(f"فشل Cloud Run: {e}")
 
         # 6
-        await report(6, "", ok=True)
+        await update_status(6, "")
         # 7
-        await report(7, "Create", ok=True)
+        await update_status(7, "Create")
         # 8
-        await report(8, "انتظار رابط النشر...")
+        await update_status(8, "انتظار الرابط")
         try:
             final_url = await console.step5_get_deployed_url(page)
             domain = extract_domain_from_service_url(final_url)
-            await report(8, f"(Domain: {domain})", ok=True)
         except Exception as e:
             await console._shot(page, "❌ step5 فشل")
             raise
+
+        # ✅ نحذفو رسالة الحالة
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
 
     finally:
         try:
