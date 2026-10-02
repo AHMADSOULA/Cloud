@@ -220,7 +220,7 @@ async def process_queue(chat_id, user_id, context):
                 domain = result["domain"]
                 log.info(f"✅ Domain: {domain}")
 
-                # ✅ 3 ملفات darktunnel فقط
+                # ✅ 3 ملفات dark فقط
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
