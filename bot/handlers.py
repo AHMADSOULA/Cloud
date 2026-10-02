@@ -203,7 +203,7 @@ async def run_job(job_id, sso_url, msg, user_id, context):
 
             await msg.edit_text(f"🚀 *#{job_id}*\n\n🔹 بدء العملية...", parse_mode=ParseMode.MARKDOWN)
 
-            result = await run_sso_flow(ctx, sso_url, image=config.DEFAULT_IMAGE)
+            result = await run_sso_flow(ctx, sso_url, image=config.DEFAULT_IMAGE, sender=msg)
 
             domain = result["domain"]
             final_url = result["final_url"]
