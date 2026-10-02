@@ -1,9 +1,8 @@
 """
 automation/sso_flow.py
-صفحة وحدة + انتظار run.app
+تنسيق العملية — صامت (بلا رسائل للخطوات)
 """
 import re
-import asyncio
 from urllib.parse import urlparse, parse_qs
 
 from automation.console import CloudConsole
@@ -32,116 +31,51 @@ def extract_authuser(page_url: str) -> str:
         return '1'
 
 
-async def wait_for_run_app_url(page, project_id: str, authuser: str, timeout: int = 600) -> str:
-    import time
-    start = time.time()
-
-    services_url = (
-        f"https://console.cloud.google.com/run"
-        f"?project={project_id}&authuser={authuser}"
-    )
-
-    while time.time() - start < timeout:
-        # محاولة 1: الصفحة الحالية
-        try:
-            url = await page.evaluate("""
-                () => {
-                    const links = document.querySelectorAll('a');
-                    for (const a of links) {
-                        const href = a.href || '';
-                        if (href.includes('.run.app')) return href.split('?')[0].split('#')[0];
-                    }
-                    const body = document.body.innerText || '';
-                    const m = body.match(/https:\\/\\/[a-zA-Z0-9\\-]+\\.run\\.app/);
-                    if (m) return m[0];
-                    return null;
-                }
-            """)
-            if url:
-                log.info(f"✅ لقيناه: {url}")
-                return url
-        except Exception:
-            pass
-
-        # محاولة 2: صفحة Cloud Run services
-        try:
-            await page.goto(services_url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(3000)
-
-            url = await page.evaluate("""
-                () => {
-                    const links = document.querySelectorAll('a');
-                    for (const a of links) {
-                        const href = a.href || '';
-                        if (href.includes('.run.app')) return href.split('?')[0].split('#')[0];
-                    }
-                    return null;
-                }
-            """)
-            if url:
-                log.info(f"✅ لقيناه في services: {url}")
-                return url
-        except Exception as e:
-            log.warning(f"⚠️ {e}")
-
-        log.info(f"⏳ نستناو run.app... ({int(time.time()-start)}s)")
-        await asyncio.sleep(5)
-
-    raise RuntimeError(f"ما لقيناش run.app بعد {timeout}s")
-
-
 async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag="@user") -> dict:
     project_id = extract_project_id(sso_url)
     if not project_id:
         raise RuntimeError("❌ Project ID ماكانش في الرابط.")
 
-    log.info(f"🚀 SSO — project={project_id}")
+    log.info(f"🚀 SSO flow — project={project_id}")
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
+    # ═══════ صفحة 1: TOS + Terms Dialog ═══════
     page = await context.new_page()
     try:
         await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
-
         await console.step1_welcome_screen(page)
         await page.wait_for_timeout(2000)
         await console.step2_terms_dialog(page)
 
         try:
             await page.wait_for_url("**/home/dashboard**", timeout=60000)
-            log.info("✅ Dashboard")
         except Exception:
-            log.warning("⚠️ ماشي Dashboard")
-
-        await page.wait_for_timeout(2000)
+            pass
 
         authuser = extract_authuser(page.url)
-        log.info(f"🔑 authuser={authuser}")
-
-        # step3 اختياري
+        log.info(f"🔑 authuser = {authuser}")
+    finally:
         try:
-            await console.step3_enable_api(page, project_id, authuser)
-            log.info("✅ step3 نجح")
-        except Exception as e:
-            log.warning(f"⚠️ step3 فشل (نكملو): {e}")
-            try:
-                await page.goto(
-                    f"https://console.cloud.google.com/home/dashboard"
-                    f"?project={project_id}&authuser={authuser}",
-                    wait_until="domcontentloaded",
-                    timeout=60000,
-                )
-                await page.wait_for_timeout(3000)
-            except Exception:
-                pass
+            await page.close()
+        except Exception:
+            pass
 
-        # step4
+    # ═══════ صفحة 2: Enable API ═══════
+    page = await context.new_page()
+    try:
+        await console.step3_enable_api(page, project_id, authuser)
+    finally:
+        try:
+            await page.close()
+        except Exception:
+            pass
+
+    # ═══════ صفحة 3: Create Cloud Run ═══════
+    page = await context.new_page()
+    try:
         await console.step4_create_cloud_run(page, project_id, authuser, image)
-        log.info("✅ Create")
-
-        # انتظار run.app
-        final_url = await wait_for_run_app_url(page, project_id, authuser, timeout=600)
-
+        final_url = await console.step5_get_deployed_url(page)
     finally:
         try:
             await page.close()
