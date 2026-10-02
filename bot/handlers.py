@@ -18,6 +18,10 @@ from automation.sso_flow import run_sso_flow
 log = get_logger("Handlers")
 
 
+# ═══════════════════════════════════════════
+# طابور
+# ═══════════════════════════════════════════
+
 class JobQueue:
     def __init__(self):
         self.queue = []
@@ -59,30 +63,7 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# 3 VLESS
-# ═══════════════════════════════════════════
-
-VLESS_YOUTUBE = (
-    "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
-    "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
-    "&host={domain}&type=ws&sni=googlevideo.com#%40AM2_D3%20YOUTUBE"
-)
-
-VLESS_SNAPCHAT = (
-    "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
-    "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
-    "&host={domain}&type=ws&sni=api.snapchat.com#%40AM2_D3%20SNAPCHAT"
-)
-
-VLESS_FREE = (
-    "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
-    "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
-    "&host={domain}&type=ws&sni=alt13.yt3.ggpht.com#%40AM2_D3%20FREE"
-)
-
-
-# ═══════════════════════════════════════════
-# 3 ملفات Dark
+# 3 ملفات DarkTunnel
 # ═══════════════════════════════════════════
 
 DARK_FILES = [
@@ -113,6 +94,7 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
         data = json.loads(decoded)
 
+        # ✅ إذا ما كانش wsHeaderHost → نزيدوه
         v2ray = data.get("vlessTunnelConfig", {}).get("v2rayConfig")
         if v2ray and "wsHeaderHost" not in v2ray:
             v2ray["wsHeaderHost"] = new_host
@@ -229,37 +211,14 @@ async def process_queue(chat_id, user_id, context):
                 )
 
                 domain = result["domain"]
-                final_url = result["final_url"]
                 log.info(f"✅ Domain: {domain}")
 
-                # ✅ رسالة النتيجة
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"✅ **Domain:**\n`{domain}`\n\n🔗 **URL:**\n`{final_url}`",
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-
-                # ✅ 3 VLESS
-                for name, tmpl in [
-                    ("YOUTUBE", VLESS_YOUTUBE),
-                    ("SNAPCHAT", VLESS_SNAPCHAT),
-                    ("FREE", VLESS_FREE),
-                ]:
-                    try:
-                        vless = tmpl.format(domain=domain)
-                        await context.bot.send_message(
-                            chat_id=chat_id,
-                            text=f"🔗 <b>VLESS {name}:</b>\n<pre><code class=\"language-java\">{vless}</code></pre>",
-                            parse_mode='html',
-                        )
-                    except Exception as e:
-                        log.error(f"❌ VLESS {name}: {e}")
-
-                # ✅ 3 ملفات dark
+                # ✅ 3 ملفات dark فقط (بلا VLESS، بلا JSON، بلا URL)
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
+                            log.error(f"❌ [{idx}/3] build فشل")
                             continue
 
                         safe_domain = "".join(
