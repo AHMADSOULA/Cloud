@@ -1,8 +1,10 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — مع تقارير مفصلة للخطوات
+كل خطوات Google Cloud Console — مع Service name فريد
 """
 import asyncio
+import random
+import string
 from playwright.async_api import expect
 from utils.logger import get_logger
 
@@ -15,18 +17,8 @@ class CloudConsole:
         self.sender = sender
         self.user_tag = user_tag or "@user"
 
-    async def _report(self, step_num: int, text: str, ok: bool = True):
-        """يبعت رسالة خطوة في Telegram"""
-        if not self.sender:
-            return
-        try:
-            symbol = "✅" if ok else "⚠️"
-            msg = f"[{self.user_tag}] • {step_num}) {text}"
-            if ok:
-                msg = f"[{self.user_tag}] • {step_num} {symbol} {text}"
-            await self.sender.reply_text(msg)
-        except Exception as e:
-            log.warning(f"⚠️ _report: {e}")
+    async def _shot(self, page, caption: str = ""):
+        return  # معطّل
 
     # ═══════════════════════════════════════
     # STEP 1: TOS الأولى
@@ -482,7 +474,7 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4: Create Cloud Run
+    # STEP 4: Create Cloud Run — مع Service name فريد
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -490,19 +482,65 @@ class CloudConsole:
             f"https://console.cloud.google.com/run/create"
             f"?project={project_id}&authuser={authuser}"
         )
+        log.info(f"🌐 Create Cloud Run")
         await page.goto(run_url, wait_until="domcontentloaded")
         await page.wait_for_timeout(5000)
 
+        # ✅ 1. Image URL
         try:
             label = page.get_by_text("Container Image URL").first
             await label.click()
             await page.wait_for_timeout(400)
             await page.keyboard.type(image, delay=40)
+            log.info("✅ رابط الحاوية")
         except Exception as e:
             raise RuntimeError(f"فشل كتابة الرابط: {str(e)}")
 
         await page.wait_for_timeout(2500)
 
+        # ✅ 2. Service name فريد (نزيد suffix عشوائي)
+        try:
+            service_name_field = None
+            for sel in [
+                'input[aria-label*="Service name" i]',
+                'input[formcontrolname*="serviceName" i]',
+                'input[formcontrolname*="name" i]',
+                'input[aria-label*="Name" i]',
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0 and await el.is_visible():
+                        service_name_field = el
+                        log.info(f"✅ حقل Service name: {sel}")
+                        break
+                except Exception:
+                    continue
+
+            if service_name_field:
+                try:
+                    current_name = await service_name_field.input_value()
+                except Exception:
+                    current_name = ""
+
+                log.info(f"📝 Service name الحالي: '{current_name}'")
+
+                # suffix عشوائي: 2 حروف + 2 أرقام
+                suffix = "".join(random.choices(string.ascii_lowercase, k=2)) + str(random.randint(10, 99))
+                new_name = f"{current_name}-{suffix}" if current_name else f"service-{suffix}"
+
+                await service_name_field.click()
+                await page.wait_for_timeout(200)
+                await service_name_field.fill("")
+                await page.wait_for_timeout(200)
+                await service_name_field.fill(new_name)
+                await page.wait_for_timeout(400)
+                log.info(f"✅ Service name جديد: '{new_name}'")
+            else:
+                log.warning("⚠️ ما لقيناش حقل Service name — نكملو")
+        except Exception as e:
+            log.warning(f"⚠️ Service name: {e}")
+
+        # ✅ 3. باقي الإعدادات
         try:
             await page.get_by_role("radio", name="Allow public access").click()
             await page.get_by_role("radio", name="Instance-based").click()
@@ -515,6 +553,7 @@ class CloudConsole:
 
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
+            log.info("✅ Create")
         except Exception as e:
             raise RuntimeError(f"فشل الإعدادات: {str(e)}")
 
