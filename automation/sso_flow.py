@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — سريع + screenshot عند الفشل
+تنسيق العملية — سريع (كيما GC.py)
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -57,9 +57,9 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         # 1) SSO
         await report(1, "فتح رابط الطالب...")
         try:
-            await page.goto(sso_url, wait_until="domcontentloaded", timeout=45000)
+            await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
         except Exception:
-            await page.goto(sso_url, wait_until="commit", timeout=45000)
+            await page.goto(sso_url, wait_until="commit", timeout=60000)
         await report(1, "", ok=True)
 
         # 2) TOS
@@ -80,8 +80,9 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             log.warning(f"⚠️ step2: {e}")
             await report(3, "متجاوز", ok=False)
 
+        # نستناو Dashboard
         try:
-            await page.wait_for_url("**/home/dashboard**", timeout=20000)
+            await page.wait_for_url("**/home/dashboard**", timeout=45000)
         except Exception:
             pass
 
@@ -95,7 +96,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             await console.step3_enable_api(page, project_id, authuser)
             await report(4, "", ok=True)
         except Exception as e:
-            log.warning(f"⚠️ step3 فشل: {e}")
+            log.warning(f"⚠️ step3: {e}")
             await report(4, "متابعة...", ok=False)
 
         # 5) Create Cloud Run
@@ -107,13 +108,13 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             await console._shot(page, "❌ step4 فشل")
             raise RuntimeError(f"فشل Cloud Run: {e}")
 
-        # 6) ═══
+        # 6
         await report(6, "", ok=True)
 
-        # 7) ═══
+        # 7
         await report(7, "Create", ok=True)
 
-        # 8) انتظار الرابط
+        # 8
         await report(8, "انتظار رابط النشر...")
         try:
             final_url = await console.step5_get_deployed_url(page)
