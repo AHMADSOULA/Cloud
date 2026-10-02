@@ -66,19 +66,19 @@ queue = JobQueue()
 VLESS_FREE = (
     "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
     "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
-    "&host={domain}&type=ws&sni=alt13.yt3.ggpht.com#%40AM2_D3%20FREE%20%F0%9F%87%BA%F0%9F%87%B8"
+    "&host={domain}&type=ws&sni=alt13.yt3.ggpht.com#%40AM2_D3%20FREE"
 )
 
 VLESS_YOUTUBE = (
     "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
     "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
-    "&host={domain}&type=ws&sni=googlevideo.com#%40AM2_D3%20YOUTUBE%20%F0%9F%87%BA%F0%9F%87%B8"
+    "&host={domain}&type=ws&sni=googlevideo.com#%40AM2_D3%20YOUTUBE"
 )
 
 VLESS_SNAPCHAT = (
     "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
     "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
-    "&host={domain}&type=ws&sni=api.snapchat.com#%40AM2_D3%20SNAPCHAT%20%F0%9F%87%BA%F0%9F%87%B8"
+    "&host={domain}&type=ws&sni=api.snapchat.com#%40AM2_D3%20SNAPCHAT"
 )
 
 
@@ -167,6 +167,12 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
+            # ✅ نبعثو رسالة باش نستعملوها كـ sender للتصوير
+            msg = await context.bot.send_message(
+                chat_id=chat_id,
+                text="⏳ بدء العملية...",
+            )
+
             browser = StealthBrowser()
             ctx = await browser.start()
 
@@ -175,14 +181,13 @@ async def process_queue(chat_id, user_id, context):
                     ctx,
                     job["sso_url"],
                     image=config.DEFAULT_IMAGE,
-                    sender=None,
+                    sender=msg,
                     user_tag=job["user_tag"],
                 )
 
                 domain = result["domain"]
                 final_url = result["final_url"]
 
-                # ✅ رسالة النتيجة
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=(
@@ -201,7 +206,6 @@ async def process_queue(chat_id, user_id, context):
                         text=f"🔗 **VLESS FREE:**\n<pre><code class=\"language-java\">{vless}</code></pre>",
                         parse_mode='html',
                     )
-                    log.info("✅ VLESS FREE sent")
                 except Exception as e:
                     log.error(f"❌ VLESS FREE: {e}", exc_info=True)
 
@@ -213,7 +217,6 @@ async def process_queue(chat_id, user_id, context):
                         text=f"🔗 **VLESS YOUTUBE:**\n<pre><code class=\"language-java\">{vless}</code></pre>",
                         parse_mode='html',
                     )
-                    log.info("✅ VLESS YOUTUBE sent")
                 except Exception as e:
                     log.error(f"❌ VLESS YOUTUBE: {e}", exc_info=True)
 
@@ -225,7 +228,6 @@ async def process_queue(chat_id, user_id, context):
                         text=f"🔗 **VLESS SNAPCHAT:**\n<pre><code class=\"language-java\">{vless}</code></pre>",
                         parse_mode='html',
                     )
-                    log.info("✅ VLESS SNAPCHAT sent")
                 except Exception as e:
                     log.error(f"❌ VLESS SNAPCHAT: {e}", exc_info=True)
 
