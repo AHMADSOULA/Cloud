@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — سريع + بلا توقف
+تنسيق العملية — سريع + screenshot عند الفشل
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -54,7 +54,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
     # ✅ صفحة وحدة
     page = await context.new_page()
     try:
-        # ═══════ 1) SSO ═══════
+        # 1) SSO
         await report(1, "فتح رابط الطالب...")
         try:
             await page.goto(sso_url, wait_until="domcontentloaded", timeout=45000)
@@ -62,7 +62,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             await page.goto(sso_url, wait_until="commit", timeout=45000)
         await report(1, "", ok=True)
 
-        # ═══════ 2) TOS ═══════
+        # 2) TOS
         await report(2, "")
         try:
             await console.step1_welcome_screen(page)
@@ -71,7 +71,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             log.warning(f"⚠️ step1: {e}")
             await report(2, "متجاوز", ok=False)
 
-        # ═══════ 3) Terms Dialog ═══════
+        # 3) Terms Dialog
         await report(3, "")
         try:
             await console.step2_terms_dialog(page)
@@ -80,7 +80,6 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             log.warning(f"⚠️ step2: {e}")
             await report(3, "متجاوز", ok=False)
 
-        # نستناو Dashboard (اختياري)
         try:
             await page.wait_for_url("**/home/dashboard**", timeout=20000)
         except Exception:
@@ -90,7 +89,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # ═══════ 4) Enable API (اختياري) ═══════
+        # 4) Enable API (اختياري)
         await report(4, "تفعيل Cloud Run API...")
         try:
             await console.step3_enable_api(page, project_id, authuser)
@@ -99,29 +98,29 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             log.warning(f"⚠️ step3 فشل: {e}")
             await report(4, "متابعة...", ok=False)
 
-        # ═══════ 5) Create Cloud Run ═══════
+        # 5) Create Cloud Run
         await report(5, "فتح Cloud Run...")
         try:
             await console.step4_create_cloud_run(page, project_id, authuser, image)
             await report(5, "", ok=True)
         except Exception as e:
-            await console._shot(page, "step4 فشل")
+            await console._shot(page, "❌ step4 فشل")
             raise RuntimeError(f"فشل Cloud Run: {e}")
 
-        # ═══════ 6 ═══════
+        # 6) ═══
         await report(6, "", ok=True)
 
-        # ═══════ 7 ═══════
+        # 7) ═══
         await report(7, "Create", ok=True)
 
-        # ═══════ 8 ═══════
+        # 8) انتظار الرابط
         await report(8, "انتظار رابط النشر...")
         try:
             final_url = await console.step5_get_deployed_url(page)
             domain = extract_domain_from_service_url(final_url)
             await report(8, f"(Domain: {domain})", ok=True)
         except Exception as e:
-            await console._shot(page, "step5 فشل")
+            await console._shot(page, "❌ step5 فشل")
             raise
 
     finally:
