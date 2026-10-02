@@ -1,8 +1,10 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — صامت + Service name فريد + screenshot عند Create
+كل خطوات Google Cloud Console — Service name فريد إجباري
 """
 import asyncio
+import random
+import string
 from playwright.async_api import expect
 from utils.logger import get_logger
 
@@ -16,9 +18,7 @@ class CloudConsole:
         self.user_tag = user_tag or "@user"
 
     async def _shot(self, page, caption: str = ""):
-        """يصوّر الصفحة ويبعثها في Telegram"""
         if not self.sender:
-            log.warning("⚠️ ما كاينش sender — ما نقدرش نبعث صورة")
             return
         try:
             path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
@@ -26,7 +26,7 @@ class CloudConsole:
             with open(path, "rb") as f:
                 try:
                     await self.sender.reply_photo(photo=f, caption=caption[:1000])
-                    log.info(f"📸 screenshot sent: {caption}")
+                    log.info(f"📸 screenshot sent")
                 except Exception as e:
                     log.warning(f"⚠️ reply_photo: {e}")
             import os
@@ -476,13 +476,10 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4 — مع Service name فريد + screenshot عند Create
+    # STEP 4 — Service name فريد إجباري
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
-        import random
-        import string
-
         run_url = (
             f"https://console.cloud.google.com/run/create"
             f"?project={project_id}&authuser={authuser}"
@@ -569,7 +566,7 @@ class CloudConsole:
 
         await page.wait_for_timeout(2000)
 
-        # Service name فريد
+        # ✅ Service name فريد — إجباري
         try:
             service_name_field = None
             for sel in [
@@ -577,31 +574,66 @@ class CloudConsole:
                 'input[formcontrolname*="serviceName" i]',
                 'input[formcontrolname*="name" i]',
                 'input[aria-label*="Name" i]',
+                'input[id*="serviceName" i]',
+                'input[id*="name" i]',
             ]:
                 try:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
                         service_name_field = el
+                        log.info(f"✅ حقل Service name: {sel}")
                         break
                 except Exception:
                     continue
 
+            # fallback: JS نلقاو أي حقل فيه "ahmed-vip1" ولا "service"
+            if not service_name_field:
+                log.warning("⚠️ ما لقيناش بـ selectors — نجربو JS")
+                try:
+                    service_name_field = page.locator('input[type="text"]').nth(1)
+                    if await service_name_field.count() > 0:
+                        log.info("✅ JS: input[type=text] nth(1)")
+                except Exception:
+                    pass
+
             if service_name_field:
+                # نقراو القيمة الحالية
                 try:
                     current_name = await service_name_field.input_value()
                 except Exception:
                     current_name = ""
 
-                suffix = random.choice(string.ascii_lowercase)
-                new_name = f"{current_name}-{suffix}" if current_name else f"service-{suffix}"
+                log.info(f"📝 Service name الحالي: '{current_name}'")
+
+                # ✅ نولّدو اسم جديد فريد
+                # إذا القيمة خاوية ولا "ahmed-vip1" نستعملو قيمة افتراضية + حرف
+                base = current_name.strip() if current_name.strip() else "ahmed-vip1"
+                
+                # نحيّدو أي suffix قديم
+                if "-" in base and len(base.split("-")[-1]) == 1:
+                    base = base.rsplit("-", 1)[0]
+
+                # نزيدو حرفين عشوائيين
+                suffix = "".join(random.choices(string.ascii_lowercase, k=2))
+                new_name = f"{base}-{suffix}"
+
+                log.info(f"✅ Service name جديد: '{new_name}'")
 
                 await service_name_field.click()
                 await page.wait_for_timeout(200)
                 await service_name_field.fill("")
-                await page.wait_for_timeout(200)
+                await page.wait_for_timeout(300)
                 await service_name_field.fill(new_name)
-                await page.wait_for_timeout(400)
-                log.info(f"✅ Service name: '{new_name}'")
+                await page.wait_for_timeout(500)
+
+                # نتحققو
+                try:
+                    final_name = await service_name_field.input_value()
+                    log.info(f"✅ تحقق: '{final_name}'")
+                except Exception:
+                    pass
+            else:
+                log.warning("⚠️ ما لقيناش حقل Service name")
         except Exception as e:
             log.warning(f"⚠️ Service name: {e}")
 
@@ -625,13 +657,12 @@ class CloudConsole:
         except Exception as e:
             log.warning(f"⚠️ إعدادات: {e}")
 
-        # ✅ نضغطو Create + نبعثو screenshot
+        # ✅ Create + screenshot
         try:
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
             log.info("✅ Create")
 
-            # ✅ نستناو ثانية ونصوّرو
             await page.wait_for_timeout(2000)
             await self._shot(page, "🚀 بعد الضغط على Create")
 
@@ -639,7 +670,7 @@ class CloudConsole:
             raise RuntimeError(f"فشل Create: {str(e)}")
 
     # ═══════════════════════════════════════
-    # STEP 5 — انتظار أطول
+    # STEP 5
     # ═══════════════════════════════════════
 
     async def step5_get_deployed_url(self, page):
