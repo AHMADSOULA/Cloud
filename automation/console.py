@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — صامت + Service name فريد
+كل خطوات Google Cloud Console — صامت + Service name فريد + step3 مصحح
 """
 import asyncio
 import random
@@ -16,6 +16,9 @@ class CloudConsole:
         self.context = context
         self.sender = sender
         self.user_tag = user_tag or "@user"
+
+    async def _shot(self, page, caption: str = ""):
+        return  # معطّل
 
     # ═══════════════════════════════════════
     # STEP 1: TOS الأولى
@@ -397,10 +400,11 @@ class CloudConsole:
                 pass
 
     # ═══════════════════════════════════════
-    # STEP 3: Enable API
+    # STEP 3: Enable API — نسخة قوية
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
+        # ✅ 1. نتحققو واش Dialog مازال مفتوح
         try:
             dialog_open = await page.evaluate("""
                 () => {
@@ -427,38 +431,123 @@ class CloudConsole:
         except Exception:
             pass
 
+        # ✅ 2. نروحو للـ API
         api_url = (
             f"https://console.cloud.google.com/apis/library/"
             f"run.googleapis.com?project={project_id}&authuser={authuser}"
         )
-        await page.goto(api_url, wait_until="domcontentloaded")
-        await page.wait_for_timeout(2500)
+        log.info(f"🌐 Enable API URL: {api_url[:150]}")
 
+        await page.goto(api_url, wait_until="domcontentloaded", timeout=60000)
+
+        # ✅ 3. نستناو الصفحة تحمّل كاملة
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(3000)
+
+        try:
+            log.info(f"📍 API URL الحالي: {page.url[:150]}")
+        except Exception:
+            pass
+
+        # ✅ 4. نستناو أي زر يظهر — 40 محاولة
         enable_btn = page.get_by_role("button", name="Enable")
         manage_btn = page.get_by_role("button", name="Manage")
         disable_btn = page.get_by_text("Disable API")
+        enable_btn_alt = page.locator('button:has-text("Enable")').first
+        manage_btn_alt = page.locator('button:has-text("Manage")').first
 
-        for attempt in range(30):
+        for attempt in range(40):
             try:
+                # Enable
                 if await enable_btn.count() > 0 and await enable_btn.is_visible():
+                    log.info("✅ لقينا زر Enable")
                     await enable_btn.click()
                     try:
                         await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=120000)
-                    except Exception:
-                        pass
+                        log.info("✅ API مفعّل")
+                    except Exception as e:
+                        log.warning(f"⚠️ ما ظهرش Manage: {e}")
                     return
 
+                # Enable alt
+                if await enable_btn_alt.count() > 0 and await enable_btn_alt.is_visible():
+                    log.info("✅ لقينا زر Enable (alt)")
+                    await enable_btn_alt.click()
+                    await page.wait_for_timeout(3000)
+                    return
+
+                # Manage
                 if await manage_btn.count() > 0 and await manage_btn.is_visible():
+                    log.info("ℹ️ API مفعّل من قبل")
                     return
-            except Exception:
-                pass
 
-            await page.wait_for_timeout(1200)
+                # Manage alt
+                if await manage_btn_alt.count() > 0 and await manage_btn_alt.is_visible():
+                    log.info("ℹ️ API مفعّل من قبل (alt)")
+                    return
+
+                # JS fallback
+                clicked = await page.evaluate("""
+                    () => {
+                        const kws = ['enable', 'manage'];
+                        for (const el of document.querySelectorAll('button, [role="button"], a')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            for (const kw of kws) {
+                                if (t === kw || t === 'enable api' || t === 'manage api') {
+                                    try { el.click(); return t; } catch (e) {}
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                if clicked:
+                    log.info(f"✅ JS: {clicked}")
+                    await page.wait_for_timeout(3000)
+                    return
+
+            except Exception as e:
+                log.warning(f"⚠️ محاولة {attempt+1}: {e}")
+
+            await page.wait_for_timeout(1500)
+
+        # ❌ ما لقيناش
+        try:
+            info = await page.evaluate("""
+                () => {
+                    const url = window.location.href;
+                    const buttons = [];
+                    for (const el of document.querySelectorAll('button, [role="button"], a')) {
+                        if (el.offsetParent === null) continue;
+                        const t = (el.innerText || '').trim();
+                        if (t && t.length < 50) buttons.push(t);
+                    }
+                    const dialog = (() => {
+                        for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').toLowerCase();
+                            if (t.includes('terms')) return t.substring(0, 200);
+                        }
+                        return null;
+                    })();
+                    return { url, buttons: buttons.slice(0, 30), dialog };
+                }
+            """)
+            log.error(f"❌ ما لقيناش زر Enable/Manage")
+            log.error(f"📍 URL: {info.get('url', '')[:200]}")
+            log.error(f"🔘 الأزرار: {info.get('buttons', [])}")
+            log.error(f"📋 Dialog: {info.get('dialog', '')}")
+        except Exception:
+            pass
 
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4: Create Cloud Run — مع Service name فريد
+    # STEP 4: Create Cloud Run
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -475,7 +564,7 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(4000)
 
-        # ✅ 1. نلقاو حقل Container Image URL
+        # ✅ 1. حقل Container Image URL
         image_found = False
         for attempt in range(15):
             try:
@@ -554,7 +643,7 @@ class CloudConsole:
 
         await page.wait_for_timeout(2000)
 
-        # ✅ 3. نزيدو حرف على اسم الخدمة (باش ما يصراش conflict)
+        # ✅ 3. Service name فريد (نزيد حرف عشوائي)
         try:
             service_name_field = None
             for sel in [
@@ -580,7 +669,7 @@ class CloudConsole:
 
                 log.info(f"📝 Service name الحالي: '{current_name}'")
 
-                # نزيدو حرف عشوائي صغير
+                # ✅ نزيدو حرف عشوائي صغير
                 suffix = random.choice(string.ascii_lowercase)
                 new_name = f"{current_name}-{suffix}" if current_name else f"service-{suffix}"
 
