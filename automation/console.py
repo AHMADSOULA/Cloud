@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — Service name فريد إجباري
+كل خطوات Google Cloud Console — Service name فريد بـ evaluate
 """
 import asyncio
 import random
@@ -476,7 +476,7 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4 — Service name فريد إجباري
+    # STEP 4 — Service name فريد بـ evaluate
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -566,76 +566,101 @@ class CloudConsole:
 
         await page.wait_for_timeout(2000)
 
-        # ✅ Service name فريد — إجباري
+        # ═══════════════════════════════════════
+        # ✅ Service name فريد بـ evaluate مباشرة
+        # ═══════════════════════════════════════
         try:
-            service_name_field = None
-            for sel in [
-                'input[aria-label*="Service name" i]',
-                'input[formcontrolname*="serviceName" i]',
-                'input[formcontrolname*="name" i]',
-                'input[aria-label*="Name" i]',
-                'input[id*="serviceName" i]',
-                'input[id*="name" i]',
-            ]:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        service_name_field = el
-                        log.info(f"✅ حقل Service name: {sel}")
-                        break
-                except Exception:
-                    continue
+            # نولّدو اسم جديد
+            suffix = "".join(random.choices(string.ascii_lowercase, k=2))
+            new_name = f"ahmed-vip1-{suffix}"
+            log.info(f"🔧 نكتبو Service name: '{new_name}'")
 
-            # fallback: JS نلقاو أي حقل فيه "ahmed-vip1" ولا "service"
-            if not service_name_field:
-                log.warning("⚠️ ما لقيناش بـ selectors — نجربو JS")
-                try:
-                    service_name_field = page.locator('input[type="text"]').nth(1)
-                    if await service_name_field.count() > 0:
-                        log.info("✅ JS: input[type=text] nth(1)")
-                except Exception:
-                    pass
+            # ✅ نستعملو evaluate مباشرة باش نكتبو
+            result = await page.evaluate(f"""
+                () => {{
+                    const newName = {new_name!r};
 
-            if service_name_field:
-                # نقراو القيمة الحالية
-                try:
-                    current_name = await service_name_field.input_value()
-                except Exception:
-                    current_name = ""
+                    // نلقاو كل الحقول
+                    const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])');
 
-                log.info(f"📝 Service name الحالي: '{current_name}'")
+                    for (const el of inputs) {{
+                        if (el.offsetParent === null) continue;
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width === 0 || rect.height === 0) continue;
 
-                # ✅ نولّدو اسم جديد فريد
-                # إذا القيمة خاوية ولا "ahmed-vip1" نستعملو قيمة افتراضية + حرف
-                base = current_name.strip() if current_name.strip() else "ahmed-vip1"
-                
-                # نحيّدو أي suffix قديم
-                if "-" in base and len(base.split("-")[-1]) == 1:
-                    base = base.rsplit("-", 1)[0]
+                        // نشوفو واش هاد الحقل هو "Service name"
+                        // 1. من خلال aria-label
+                        const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+                        const id = (el.id || '').toLowerCase();
+                        const name = (el.name || '').toLowerCase();
+                        const fc = (el.getAttribute('formcontrolname') || '').toLowerCase();
 
-                # نزيدو حرفين عشوائيين
-                suffix = "".join(random.choices(string.ascii_lowercase, k=2))
-                new_name = f"{base}-{suffix}"
+                        const isServiceName = (
+                            aria.includes('service name') ||
+                            aria.includes('service-name') ||
+                            id.includes('servicename') ||
+                            id.includes('service-name') ||
+                            name.includes('servicename') ||
+                            fc.includes('servicename') ||
+                            fc === 'name' ||
+                            id.includes('name') && id.includes('service')
+                        );
 
-                log.info(f"✅ Service name جديد: '{new_name}'")
+                        // 2. من خلال القيمة الحالية
+                        const val = (el.value || '').toLowerCase();
+                        const isAhmedVip = val.includes('ahmed-vip1') || val.includes('ahmed-vip');
 
-                await service_name_field.click()
-                await page.wait_for_timeout(200)
-                await service_name_field.fill("")
-                await page.wait_for_timeout(300)
-                await service_name_field.fill(new_name)
-                await page.wait_for_timeout(500)
+                        if (isServiceName || isAhmedVip) {{
+                            // ✅ نكتبو الاسم الجديد
+                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                window.HTMLInputElement.prototype, 'value'
+                            ).set;
+                            nativeInputValueSetter.call(el, newName);
 
-                # نتحققو
-                try:
-                    final_name = await service_name_field.input_value()
-                    log.info(f"✅ تحقق: '{final_name}'")
-                except Exception:
-                    pass
-            else:
-                log.warning("⚠️ ما لقيناش حقل Service name")
+                            // نطلقو events
+                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            el.dispatchEvent(new Event('blur', {{ bubbles: true }}));
+
+                            return {{
+                                ok: true,
+                                old_value: val,
+                                new_value: el.value,
+                                aria: aria,
+                                id: id,
+                            }};
+                        }}
+                    }}
+
+                    return {{ ok: false }};
+                }}
+            """)
+
+            log.info(f"🔧 evaluate result: {result}")
+
+            await page.wait_for_timeout(1000)
+
+            # نتحققو
+            try:
+                verify = await page.evaluate("""
+                    () => {
+                        const inputs = document.querySelectorAll('input[type="text"], input[type="search"]');
+                        for (const el of inputs) {
+                            if (el.offsetParent === null) continue;
+                            const val = el.value || '';
+                            if (val.includes('ahmed-vip1')) {
+                                return val;
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                log.info(f"✅ Service name بعد الكتابة: '{verify}'")
+            except Exception as e:
+                log.warning(f"⚠️ verify: {e}")
+
         except Exception as e:
-            log.warning(f"⚠️ Service name: {e}")
+            log.warning(f"⚠️ Service name: {e}", exc_info=True)
 
         # إعدادات
         try:
@@ -657,7 +682,7 @@ class CloudConsole:
         except Exception as e:
             log.warning(f"⚠️ إعدادات: {e}")
 
-        # ✅ Create + screenshot
+        # Create + screenshot
         try:
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
