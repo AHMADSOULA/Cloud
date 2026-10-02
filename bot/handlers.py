@@ -114,49 +114,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 
 # ═══════════════════════════════════════════
-# Countdown — يحدّث رسالة وحدة
-# ═══════════════════════════════════════════
-
-async def run_countdown(msg, seconds: int, domain_holder: dict):
-    """
-    يحدّث رسالة وحدة كل 5 ثواني بالوقت المتبقي.
-    يتوقف إذا domain_holder['done'] = True
-    """
-    remaining = seconds
-    while remaining > 0:
-        # إذا خلصت العملية
-        if domain_holder.get("done"):
-            try:
-                await msg.delete()
-            except Exception:
-                pass
-            return
-
-        try:
-            bar_total = 20
-            filled = int(bar_total * (1 - remaining / seconds)) if seconds > 0 else bar_total
-            bar = "█" * filled + "░" * (bar_total - filled)
-
-            await msg.edit_text(
-                f"⏳ **جاري التنفيذ...**\n\n"
-                f"`{bar}`\n\n"
-                f"⏱️ الوقت المتبقي التقريبي: **{remaining}** ثانية"
-            )
-        except Exception:
-            pass
-
-        await asyncio.sleep(5)
-        remaining -= 5
-
-    # إذا خلص الوقت ولكن العملية مازال
-    if not domain_holder.get("done"):
-        try:
-            await msg.edit_text("⏳ **جاري التنفيذ...** — نستناو شوية")
-        except Exception:
-            pass
-
-
-# ═══════════════════════════════════════════
 # الأوامر
 # ═══════════════════════════════════════════
 
@@ -201,7 +158,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# استقبال SSO
+# استقبال SSO — بلا رسائل زايدة
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -221,6 +178,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
 
+    # ✅ رسالة وحدة فقط
     await update.message.reply_text(
         f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
         f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
@@ -230,7 +188,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# معالجة الطابور
+# معالجة الطابور — صامت
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -240,21 +198,7 @@ async def process_queue(chat_id, user_id, context):
             return
 
         job = item
-        countdown_task = None
-        domain_holder = {"done": False}
-        progress_msg = None
-
         try:
-            # ✅ نبعث رسالة واحدة للـ countdown
-            progress_msg = await context.bot.send_message(
-                chat_id=chat_id,
-                text="⏳ **جاري التنفيذ...**\n\n`░░░░░░░░░░░░░░░░░░░░`\n\n⏱️ الوقت المتبقي التقريبي: **120** ثانية",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-
-            # ✅ نشغلو الـ countdown في الخلفية
-            countdown_task = asyncio.create_task(run_countdown(progress_msg, 120, domain_holder))
-
             browser = StealthBrowser()
             ctx = await browser.start()
 
@@ -270,16 +214,6 @@ async def process_queue(chat_id, user_id, context):
                 domain = result["domain"]
                 final_url = result["final_url"]
 
-                # ✅ نوقفو الـ countdown
-                domain_holder["done"] = True
-                if countdown_task:
-                    countdown_task.cancel()
-                if progress_msg:
-                    try:
-                        await progress_msg.delete()
-                    except Exception:
-                        pass
-
                 # ✅ رسالة النتيجة
                 await context.bot.send_message(
                     chat_id=chat_id,
@@ -291,15 +225,10 @@ async def process_queue(chat_id, user_id, context):
                     parse_mode=ParseMode.MARKDOWN,
                 )
 
-                log.info(f"🔵 بدء إرسال {len(DARK_FILES)} ملفات dark")
-
                 # ✅ 3 ملفات darktunnel
-                for idx, dark in enumerate(DARK_FILES, 1):
+                for dark in DARK_FILES:
                     try:
-                        log.info(f"🔵 [{idx}/3] {dark['name']}")
-
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
-                        log.info(f"🔵 URI length: {len(new_uri)}")
 
                         safe_domain = "".join(
                             c for c in domain.lower()
@@ -318,29 +247,10 @@ async def process_queue(chat_id, user_id, context):
                             filename=filename,
                             caption=f"✅ {dark['name']}\n`{domain}`",
                         )
-                        log.info(f"✅ [{idx}/3] {dark['name']} sent")
-
                     except Exception as e:
-                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
-                        try:
-                            await context.bot.send_message(
-                                chat_id=chat_id,
-                                text=f"❌ فشل ملف {dark['name']}:\n{str(e)[:300]}",
-                            )
-                        except Exception:
-                            pass
+                        log.warning(f"⚠️ dark {dark['name']}: {e}")
 
             finally:
-                # ✅ نضمن إيقاف الـ countdown
-                domain_holder["done"] = True
-                if countdown_task and not countdown_task.done():
-                    countdown_task.cancel()
-                if progress_msg:
-                    try:
-                        await progress_msg.delete()
-                    except Exception:
-                        pass
-
                 try:
                     await browser.close()
                 except Exception:
@@ -348,14 +258,6 @@ async def process_queue(chat_id, user_id, context):
 
         except Exception as e:
             log.exception("فشل تنفيذ المهمة")
-            domain_holder["done"] = True
-            if countdown_task and not countdown_task.done():
-                countdown_task.cancel()
-            if progress_msg:
-                try:
-                    await progress_msg.delete()
-                except Exception:
-                    pass
             try:
                 await context.bot.send_message(chat_id=chat_id, text=f"❌ فشل\n\n{str(e)[:400]}")
             except Exception:
