@@ -13,7 +13,7 @@ from utils.helpers import extract_urls
 from utils.logger import get_logger
 from config import config
 from automation.browser import StealthBrowser
-from automation.sso_flow import run_sso_flow
+from automation.sso_flow import run_sso_flow, extract_email_from_url, extract_password_from_url
 
 log = get_logger("Handlers")
 
@@ -94,7 +94,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
         data = json.loads(decoded)
 
-        # ✅ إذا ما كانش wsHeaderHost → نزيدوه
         v2ray = data.get("vlessTunnelConfig", {}).get("v2rayConfig")
         if v2ray and "wsHeaderHost" not in v2ray:
             v2ray["wsHeaderHost"] = new_host
@@ -176,6 +175,27 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
 
+    # ✅ نحاولو نستخرجو الإيميل وكلمة السر من الرابط
+    email = extract_email_from_url(sso_url)
+    password = extract_password_from_url(sso_url)
+
+    log.info(f"📧 Email: {email}, 🔑 Password: {'✅' if password else '❌'}")
+
+    # ✅ إذا كاين إيميل ولكن بلا كلمة سر → نطلبوها
+    if email and not password:
+        await db.set_session(
+            user_id=user.id,
+            sso_url=sso_url,
+            state="waiting_password",
+        )
+        await update.message.reply_text(
+            f"📧 لقينا الإيميل:\n`{email}`\n\n"
+            f"🔑 *أرسل كلمة السر باش نكملو:*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # ✅ إذا كاين إيميل + كلمة سر → نكملو
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
 
     await update.message.reply_text(
@@ -183,10 +203,53 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
     )
 
-    await update.message.reply_text("☁️ GC.Run\n✅ تم استلام الرابط. جاري التنفيذ الآن...")
+    asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
+
+
+async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يستقبل كلمة السر من المستخدم"""
+    user = update.effective_user
+    password = (update.message.text or "").strip()
+
+    if not password:
+        return
+
+    session = await db.get_session(user.id)
+    if not session or session.get("state") != "waiting_password":
+        return
+
+    # ✅ نحذفو الرسالة للأمان
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    sso_url = session.get("sso_url")
+    if not sso_url:
+        await update.message.reply_text("❌ ما لقيناش الرابط.")
+        return
+
+    await db.clear_session(user.id)
+
+    # ✅ نزيدو كلمة السر للرابط
+    if "Password=" not in sso_url:
+        sep = "&" if "?" in sso_url else "?"
+        sso_url = f"{sso_url}{sep}Password={password}"
+
+    user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
+
+    num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
+
+    await update.message.reply_text(
+        f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن."
+    )
 
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
+
+# ═══════════════════════════════════════════
+# معالجة الطابور
+# ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
     async with asyncio.Lock():
@@ -196,7 +259,8 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
-            msg = await context.bot.send_message(chat_id=chat_id, text="⏳ بدء العملية...")
+            # ✅ رسالة وحدة تتبدل (من sso_flow)
+            msg = await context.bot.send_message(chat_id=chat_id, text="🚀 جاري التنفيذ... [0/8]")
 
             browser = StealthBrowser()
             ctx = await browser.start()
@@ -213,12 +277,11 @@ async def process_queue(chat_id, user_id, context):
                 domain = result["domain"]
                 log.info(f"✅ Domain: {domain}")
 
-                # ✅ 3 ملفات dark فقط (بلا VLESS، بلا JSON، بلا URL)
+                # ✅ 3 ملفات dark
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
-                            log.error(f"❌ [{idx}/3] build فشل")
                             continue
 
                         safe_domain = "".join(
@@ -261,6 +324,8 @@ async def process_queue(chat_id, user_id, context):
             if queue.queue_size() > 0:
                 asyncio.create_task(process_queue(chat_id, user_id, context))
 
+
+# ═══════════════════════════════════════════
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
