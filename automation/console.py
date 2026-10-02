@@ -1,10 +1,8 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — مع Service name فريد
+كل خطوات Google Cloud Console — النسخة المستقرة
 """
 import asyncio
-import random
-import string
 from playwright.async_api import expect
 from utils.logger import get_logger
 
@@ -474,7 +472,7 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4: Create Cloud Run — مع Service name فريد
+    # STEP 4: Create Cloud Run — نسخة محسّنة
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -484,12 +482,91 @@ class CloudConsole:
         )
         log.info(f"🌐 Create Cloud Run")
         await page.goto(run_url, wait_until="domcontentloaded")
+
+        # ✅ نستناو الصفحة تحمّل كاملة — حتى 15 ثانية
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
         await page.wait_for_timeout(5000)
 
-        # ✅ 1. Image URL
+        # ✅ نستناو حقل "Container Image URL" يظهر (عدة selectors)
+        log.info("⏳ نستناو حقل Container Image URL...")
+        image_found = False
+        for attempt in range(20):
+            try:
+                # محاولة 1: get_by_text
+                try:
+                    label = page.get_by_text("Container Image URL").first
+                    if await label.count() > 0 and await label.is_visible():
+                        await label.click()
+                        image_found = True
+                        log.info("✅ لقيناه بـ get_by_text")
+                        break
+                except Exception:
+                    pass
+
+                # محاولة 2: input[aria-label]
+                try:
+                    inp = page.locator('input[aria-label*="Container Image URL" i]').first
+                    if await inp.count() > 0 and await inp.is_visible():
+                        await inp.click()
+                        image_found = True
+                        log.info("✅ لقيناه بـ input[aria-label]")
+                        break
+                except Exception:
+                    pass
+
+                # محاولة 3: أي عنصر فيه "Container Image"
+                try:
+                    el = page.locator('text=/Container Image/i').first
+                    if await el.count() > 0 and await el.is_visible():
+                        await el.click()
+                        image_found = True
+                        log.info("✅ لقيناه بـ text regex")
+                        break
+                except Exception:
+                    pass
+
+                # محاولة 4: JS evaluate
+                try:
+                    clicked = await page.evaluate("""
+                        () => {
+                            const els = document.querySelectorAll('*');
+                            for (const el of els) {
+                                const t = (el.innerText || '').trim();
+                                if (t.includes('Container Image URL') && t.length < 100) {
+                                    try { el.click(); return 'ok'; } catch (e) {}
+                                }
+                            }
+                            return null;
+                        }
+                    """)
+                    if clicked:
+                        image_found = True
+                        log.info("✅ لقيناه بـ JS")
+                        break
+                except Exception:
+                    pass
+            except Exception as e:
+                log.warning(f"⚠️ محاولة {attempt+1}: {e}")
+
+            await page.wait_for_timeout(1500)
+
+        if not image_found:
+            # ✅ نحاولو نكتبو مباشرة بدون click (يمكن الحقل موجود ومرئي)
+            try:
+                inp = page.locator('input[type="text"]').first
+                if await inp.count() > 0:
+                    await inp.click()
+                    log.info("ℹ️ نكتبو مباشرة في أول input")
+                else:
+                    raise RuntimeError("ما لقيناش حقل Container Image URL")
+            except Exception as e:
+                raise RuntimeError(f"فشل لقاء حقل Image: {str(e)}")
+
+        # ✅ نكتبو الرابط
         try:
-            label = page.get_by_text("Container Image URL").first
-            await label.click()
             await page.wait_for_timeout(400)
             await page.keyboard.type(image, delay=40)
             log.info("✅ رابط الحاوية")
@@ -498,59 +575,30 @@ class CloudConsole:
 
         await page.wait_for_timeout(2500)
 
-        # ✅ 2. Service name فريد (نزيد suffix عشوائي)
+        # ✅ باقي الإعدادات
         try:
-            service_name_field = None
-            for sel in [
-                'input[aria-label*="Service name" i]',
-                'input[formcontrolname*="serviceName" i]',
-                'input[formcontrolname*="name" i]',
-                'input[aria-label*="Name" i]',
-            ]:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        service_name_field = el
-                        log.info(f"✅ حقل Service name: {sel}")
-                        break
-                except Exception:
-                    continue
+            # Allow public access
+            try:
+                await page.get_by_role("radio", name="Allow public access").click(timeout=10000)
+            except Exception:
+                log.warning("⚠️ ما لقيناش Allow public access")
 
-            if service_name_field:
-                try:
-                    current_name = await service_name_field.input_value()
-                except Exception:
-                    current_name = ""
+            # Instance-based
+            try:
+                await page.get_by_role("radio", name="Instance-based").click(timeout=10000)
+            except Exception:
+                log.warning("⚠️ ما لقيناش Instance-based")
 
-                log.info(f"📝 Service name الحالي: '{current_name}'")
-
-                # suffix عشوائي: 2 حروف + 2 أرقام
-                suffix = "".join(random.choices(string.ascii_lowercase, k=2)) + str(random.randint(10, 99))
-                new_name = f"{current_name}-{suffix}" if current_name else f"service-{suffix}"
-
-                await service_name_field.click()
-                await page.wait_for_timeout(200)
-                await service_name_field.fill("")
-                await page.wait_for_timeout(200)
-                await service_name_field.fill(new_name)
-                await page.wait_for_timeout(400)
-                log.info(f"✅ Service name جديد: '{new_name}'")
-            else:
-                log.warning("⚠️ ما لقيناش حقل Service name — نكملو")
-        except Exception as e:
-            log.warning(f"⚠️ Service name: {e}")
-
-        # ✅ 3. باقي الإعدادات
-        try:
-            await page.get_by_role("radio", name="Allow public access").click()
-            await page.get_by_role("radio", name="Instance-based").click()
+            # Hide
             try:
                 await page.get_by_role("button", name="Hide").click(timeout=2000)
             except Exception:
                 pass
+
             await page.keyboard.press("End")
             await page.wait_for_timeout(800)
 
+            # Create
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
             log.info("✅ Create")
