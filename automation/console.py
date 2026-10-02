@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — Service name فريد بـ evaluate
+كل خطوات Google Cloud Console — سريع، بلا تصوير، Service name فريد
 """
 import asyncio
 import random
@@ -18,24 +18,7 @@ class CloudConsole:
         self.user_tag = user_tag or "@user"
 
     async def _shot(self, page, caption: str = ""):
-        if not self.sender:
-            return
-        try:
-            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
-            await page.screenshot(path=path, full_page=False, timeout=15000)
-            with open(path, "rb") as f:
-                try:
-                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
-                    log.info(f"📸 screenshot sent")
-                except Exception as e:
-                    log.warning(f"⚠️ reply_photo: {e}")
-            import os
-            try:
-                os.remove(path)
-            except Exception:
-                pass
-        except Exception as e:
-            log.warning(f"⚠️ _shot: {e}")
+        return  # معطّل
 
     # ═══════════════════════════════════════
     # STEP 1
@@ -45,7 +28,7 @@ class CloudConsole:
         log.info("🚀 step1: Welcome / TOS")
 
         await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_timeout(1500)
+        await page.wait_for_timeout(1200)
 
         try:
             is_tos = await page.evaluate("""
@@ -103,7 +86,7 @@ class CloudConsole:
                     if (el) el.scrollIntoView({{block: 'center', behavior: 'instant'}});
                 }}
             """)
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(400)
 
             target2 = await page.evaluate("""
                 () => {
@@ -128,12 +111,12 @@ class CloudConsole:
                 target['x'] = target2['x']
                 target['y'] = target2['y']
 
-            await page.mouse.move(target['x'] - 100, target['y'] - 50, steps=6)
-            await page.wait_for_timeout(150)
-            await page.mouse.move(target['x'], target['y'], steps=5)
-            await page.wait_for_timeout(200)
-            await page.mouse.down()
+            await page.mouse.move(target['x'] - 80, target['y'] - 40, steps=4)
             await page.wait_for_timeout(100)
+            await page.mouse.move(target['x'], target['y'], steps=4)
+            await page.wait_for_timeout(150)
+            await page.mouse.down()
+            await page.wait_for_timeout(80)
             await page.mouse.up()
             log.info("✅ mouse click")
         except Exception as e:
@@ -143,8 +126,8 @@ class CloudConsole:
             except Exception:
                 pass
 
-        for i in range(12):
-            await page.wait_for_timeout(1200)
+        for i in range(10):
+            await page.wait_for_timeout(1000)
             try:
                 gone = await page.evaluate("""
                     () => {
@@ -157,7 +140,7 @@ class CloudConsole:
                     }
                 """)
                 if gone:
-                    log.info(f"✅ TOS اختفت ~{(i+1)*1.2}s")
+                    log.info(f"✅ TOS اختفت ~{(i+1)*1}s")
                     break
             except Exception:
                 pass
@@ -170,7 +153,7 @@ class CloudConsole:
         log.info("🚀 step2: Terms Dialog")
 
         has_dialog = False
-        for _ in range(8):
+        for _ in range(6):
             try:
                 has_dialog = await page.evaluate("""
                     () => {
@@ -186,7 +169,7 @@ class CloudConsole:
                     break
             except Exception:
                 pass
-            await page.wait_for_timeout(700)
+            await page.wait_for_timeout(600)
 
         if not has_dialog:
             log.info("ℹ️ ما كاينش Dialog")
@@ -229,15 +212,15 @@ class CloudConsole:
         if checkbox_info and not checkbox_info['checked']:
             log.info(f"📋 checkbox @({checkbox_info['x']},{checkbox_info['y']})")
             try:
-                await page.mouse.move(checkbox_info['x'] - 30, checkbox_info['y'] - 30, steps=5)
-                await page.wait_for_timeout(150)
-                await page.mouse.move(checkbox_info['x'], checkbox_info['y'], steps=5)
-                await page.wait_for_timeout(200)
-                await page.mouse.down()
+                await page.mouse.move(checkbox_info['x'] - 20, checkbox_info['y'] - 20, steps=4)
                 await page.wait_for_timeout(100)
+                await page.mouse.move(checkbox_info['x'], checkbox_info['y'], steps=4)
+                await page.wait_for_timeout(150)
+                await page.mouse.down()
+                await page.wait_for_timeout(80)
                 await page.mouse.up()
                 log.info("✅ checkbox mouse")
-                await page.wait_for_timeout(1800)
+                await page.wait_for_timeout(1500)
 
                 checked_now = await page.evaluate("""
                     () => {
@@ -274,12 +257,12 @@ class CloudConsole:
                             }
                         }
                     """)
-                    await page.wait_for_timeout(1800)
+                    await page.wait_for_timeout(1500)
             except Exception as e:
                 log.warning(f"❌ checkbox: {e}")
 
         agree_target = None
-        for _ in range(8):
+        for _ in range(6):
             try:
                 agree_target = await page.evaluate("""
                     () => {
@@ -311,7 +294,7 @@ class CloudConsole:
                     break
             except Exception:
                 pass
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(800)
 
         if not agree_target:
             return
@@ -334,7 +317,7 @@ class CloudConsole:
                         }
                     }
                 """)
-                await page.wait_for_timeout(1800)
+                await page.wait_for_timeout(1500)
             except Exception:
                 pass
 
@@ -345,19 +328,19 @@ class CloudConsole:
                     if (el) el.scrollIntoView({{block: 'center', behavior: 'instant'}});
                 }}
             """)
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(400)
 
-            await page.mouse.move(agree_target['x'] - 80, agree_target['y'] - 40, steps=6)
-            await page.wait_for_timeout(150)
-            await page.mouse.move(agree_target['x'], agree_target['y'], steps=5)
-            await page.wait_for_timeout(200)
-            await page.mouse.down()
+            await page.mouse.move(agree_target['x'] - 60, agree_target['y'] - 30, steps=4)
             await page.wait_for_timeout(100)
+            await page.mouse.move(agree_target['x'], agree_target['y'], steps=4)
+            await page.wait_for_timeout(150)
+            await page.mouse.down()
+            await page.wait_for_timeout(80)
             await page.mouse.up()
         except Exception:
             pass
 
-        await page.wait_for_timeout(1200)
+        await page.wait_for_timeout(1000)
 
         still_open = await page.evaluate("""
             () => {
@@ -391,12 +374,12 @@ class CloudConsole:
                         }
                     }
                 """)
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(1500)
             except Exception:
                 pass
 
-        for i in range(12):
-            await page.wait_for_timeout(1200)
+        for i in range(10):
+            await page.wait_for_timeout(1000)
             try:
                 gone = await page.evaluate("""
                     () => {
@@ -409,7 +392,7 @@ class CloudConsole:
                     }
                 """)
                 if gone:
-                    log.info(f"✅ Dialog اختفى ~{(i+1)*1.2}s")
+                    log.info(f"✅ Dialog اختفى ~{(i+1)*1}s")
                     break
             except Exception:
                 pass
@@ -441,7 +424,7 @@ class CloudConsole:
                         }
                     }
                 """)
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(1500)
         except Exception:
             pass
 
@@ -450,7 +433,7 @@ class CloudConsole:
             f"run.googleapis.com?project={project_id}&authuser={authuser}"
         )
         await page.goto(api_url, wait_until="domcontentloaded")
-        await page.wait_for_timeout(2500)
+        await page.wait_for_timeout(2000)
 
         enable_btn = page.get_by_role("button", name="Enable")
         manage_btn = page.get_by_role("button", name="Manage")
@@ -471,12 +454,12 @@ class CloudConsole:
             except Exception:
                 pass
 
-            await page.wait_for_timeout(1200)
+            await page.wait_for_timeout(1000)
 
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4 — Service name فريد بـ evaluate
+    # STEP 4 — Service name فريد
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -491,11 +474,11 @@ class CloudConsole:
             await page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
             pass
-        await page.wait_for_timeout(4000)
+        await page.wait_for_timeout(3500)
 
         # حقل Image
         image_found = False
-        for attempt in range(15):
+        for attempt in range(12):
             try:
                 try:
                     label = page.get_by_text("Container Image URL").first
@@ -523,29 +506,10 @@ class CloudConsole:
                         break
                 except Exception:
                     pass
-
-                try:
-                    clicked = await page.evaluate("""
-                        () => {
-                            const els = document.querySelectorAll('*');
-                            for (const el of els) {
-                                const t = (el.innerText || '').trim();
-                                if (t.includes('Container Image URL') && t.length < 100) {
-                                    try { el.click(); return 'ok'; } catch (e) {}
-                                }
-                            }
-                            return null;
-                        }
-                    """)
-                    if clicked:
-                        image_found = True
-                        break
-                except Exception:
-                    pass
             except Exception:
                 pass
 
-            await page.wait_for_timeout(1200)
+            await page.wait_for_timeout(1000)
 
         if not image_found:
             try:
@@ -558,29 +522,24 @@ class CloudConsole:
                 raise RuntimeError(f"فشل لقاء حقل: {str(e)}")
 
         try:
-            await page.wait_for_timeout(400)
-            await page.keyboard.type(image, delay=40)
+            await page.wait_for_timeout(300)
+            await page.keyboard.type(image, delay=30)
             log.info("✅ رابط الحاوية")
         except Exception as e:
             raise RuntimeError(f"فشل كتابة الرابط: {str(e)}")
 
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(1500)
 
-        # ═══════════════════════════════════════
-        # ✅ Service name فريد بـ evaluate مباشرة
-        # ═══════════════════════════════════════
+        # ✅ Service name فريد بـ evaluate
         try:
-            # نولّدو اسم جديد
             suffix = "".join(random.choices(string.ascii_lowercase, k=2))
             new_name = f"ahmed-vip1-{suffix}"
-            log.info(f"🔧 نكتبو Service name: '{new_name}'")
+            log.info(f"🔧 Service name: '{new_name}'")
 
-            # ✅ نستعملو evaluate مباشرة باش نكتبو
             result = await page.evaluate(f"""
                 () => {{
                     const newName = {new_name!r};
 
-                    // نلقاو كل الحقول
                     const inputs = document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])');
 
                     for (const el of inputs) {{
@@ -588,8 +547,6 @@ class CloudConsole:
                         const rect = el.getBoundingClientRect();
                         if (rect.width === 0 || rect.height === 0) continue;
 
-                        // نشوفو واش هاد الحقل هو "Service name"
-                        // 1. من خلال aria-label
                         const aria = (el.getAttribute('aria-label') || '').toLowerCase();
                         const id = (el.id || '').toLowerCase();
                         const name = (el.name || '').toLowerCase();
@@ -602,22 +559,18 @@ class CloudConsole:
                             id.includes('service-name') ||
                             name.includes('servicename') ||
                             fc.includes('servicename') ||
-                            fc === 'name' ||
-                            id.includes('name') && id.includes('service')
+                            fc === 'name'
                         );
 
-                        // 2. من خلال القيمة الحالية
                         const val = (el.value || '').toLowerCase();
                         const isAhmedVip = val.includes('ahmed-vip1') || val.includes('ahmed-vip');
 
                         if (isServiceName || isAhmedVip) {{
-                            // ✅ نكتبو الاسم الجديد
                             const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
                                 window.HTMLInputElement.prototype, 'value'
                             ).set;
                             nativeInputValueSetter.call(el, newName);
 
-                            // نطلقو events
                             el.dispatchEvent(new Event('input', {{ bubbles: true }}));
                             el.dispatchEvent(new Event('change', {{ bubbles: true }}));
                             el.dispatchEvent(new Event('blur', {{ bubbles: true }}));
@@ -626,8 +579,6 @@ class CloudConsole:
                                 ok: true,
                                 old_value: val,
                                 new_value: el.value,
-                                aria: aria,
-                                id: id,
                             }};
                         }}
                     }}
@@ -636,11 +587,9 @@ class CloudConsole:
                 }}
             """)
 
-            log.info(f"🔧 evaluate result: {result}")
+            log.info(f"🔧 result: {result}")
+            await page.wait_for_timeout(800)
 
-            await page.wait_for_timeout(1000)
-
-            # نتحققو
             try:
                 verify = await page.evaluate("""
                     () => {
@@ -648,16 +597,14 @@ class CloudConsole:
                         for (const el of inputs) {
                             if (el.offsetParent === null) continue;
                             const val = el.value || '';
-                            if (val.includes('ahmed-vip1')) {
-                                return val;
-                            }
+                            if (val.includes('ahmed-vip1')) return val;
                         }
                         return null;
                     }
                 """)
-                log.info(f"✅ Service name بعد الكتابة: '{verify}'")
-            except Exception as e:
-                log.warning(f"⚠️ verify: {e}")
+                log.info(f"✅ Service name: '{verify}'")
+            except Exception:
+                pass
 
         except Exception as e:
             log.warning(f"⚠️ Service name: {e}", exc_info=True)
@@ -665,32 +612,28 @@ class CloudConsole:
         # إعدادات
         try:
             try:
-                await page.get_by_role("radio", name="Allow public access").click(timeout=10000)
+                await page.get_by_role("radio", name="Allow public access").click(timeout=8000)
             except Exception:
                 pass
             try:
-                await page.get_by_role("radio", name="Instance-based").click(timeout=10000)
+                await page.get_by_role("radio", name="Instance-based").click(timeout=8000)
             except Exception:
                 pass
             try:
-                await page.get_by_role("button", name="Hide").click(timeout=2000)
+                await page.get_by_role("button", name="Hide").click(timeout=1500)
             except Exception:
                 pass
 
             await page.keyboard.press("End")
-            await page.wait_for_timeout(600)
+            await page.wait_for_timeout(500)
         except Exception as e:
             log.warning(f"⚠️ إعدادات: {e}")
 
-        # Create + screenshot
+        # Create
         try:
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
             log.info("✅ Create")
-
-            await page.wait_for_timeout(2000)
-            await self._shot(page, "🚀 بعد الضغط على Create")
-
         except Exception as e:
             raise RuntimeError(f"فشل Create: {str(e)}")
 
