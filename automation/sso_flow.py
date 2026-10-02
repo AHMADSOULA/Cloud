@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — صفحة وحدة (باش ما تضيعش الجلسة)
+تنسيق العملية — صفحة وحدة (باش الجلسة ما تضيعش)
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -51,15 +51,15 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             pass
 
-    # ✅ صفحة وحدة
+    # ✅ صفحة وحدة — نفس الجلسة
     page = await context.new_page()
     try:
-        # ═══════ 1) فتح SSO ═══════
+        # ═══════ 1) SSO ═══════
         await report(1, "فتح رابط الطالب...")
         await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
         await report(1, "", ok=True)
 
-        # ═══════ 2) TOS الأولى ═══════
+        # ═══════ 2) TOS ═══════
         await report(2, "")
         try:
             await console.step1_welcome_screen(page)
@@ -80,6 +80,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         # ═══════ نستناو Dashboard ═══════
         try:
             await page.wait_for_url("**/home/dashboard**", timeout=60000)
+            log.info("✅ وصلنا Dashboard")
         except Exception:
             log.warning("⚠️ ما وصلناش Dashboard")
 
@@ -88,7 +89,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # ═══════ 4) Enable API — اختياري ═══════
+        # ═══════ 4) Enable API — نفس الصفحة ═══════
         await report(4, "تفعيل Cloud Run API...")
         try:
             await console.step3_enable_api(page, project_id, authuser)
@@ -96,7 +97,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception as e:
             log.warning(f"⚠️ step3 فشل (نكملو): {e}")
             await report(4, "API مؤكد، متابعة...", ok=False)
-            # ✅ نرجعو للـ Dashboard
+            # نرجعو للـ Dashboard
             try:
                 await page.goto(
                     f"https://console.cloud.google.com/home/dashboard"
@@ -108,7 +109,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             except Exception:
                 pass
 
-        # ═══════ 5) Create Cloud Run ═══════
+        # ═══════ 5) Create Cloud Run — نفس الصفحة ═══════
         await report(5, "فتح Cloud Run...")
         try:
             await console.step4_create_cloud_run(page, project_id, authuser, image)
@@ -116,12 +117,12 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception as e:
             raise RuntimeError(f"فشل Cloud Run: {e}")
 
-        # ═══════ 6) تعبئة الحقول ═══════
+        # ═══════ 6) تعبئة ═══════
         await report(6, "تعبئة الحقول...")
         await page.wait_for_timeout(1500)
         await report(6, "", ok=True)
 
-        # ═══════ 7) Create الخدمة ═══════
+        # ═══════ 7) Create ═══════
         await report(7, "Create الخدمة...")
         await page.wait_for_timeout(1500)
         await report(7, "Create", ok=True)
