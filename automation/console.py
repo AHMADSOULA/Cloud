@@ -1,8 +1,10 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — صامت (بلا تقارير، بلا تصوير)
+كل خطوات Google Cloud Console — صامت + Service name فريد
 """
 import asyncio
+import random
+import string
 from playwright.async_api import expect
 from utils.logger import get_logger
 
@@ -456,7 +458,7 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4: Create Cloud Run
+    # STEP 4: Create Cloud Run — مع Service name فريد
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -473,7 +475,7 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(4000)
 
-        # ✅ نلقاو حقل Container Image URL — 4 استراتيجيات
+        # ✅ 1. نلقاو حقل Container Image URL
         image_found = False
         for attempt in range(15):
             try:
@@ -542,6 +544,7 @@ class CloudConsole:
             except Exception as e:
                 raise RuntimeError(f"فشل لقاء حقل: {str(e)}")
 
+        # ✅ 2. نكتبو رابط الحاوية
         try:
             await page.wait_for_timeout(400)
             await page.keyboard.type(image, delay=40)
@@ -551,6 +554,49 @@ class CloudConsole:
 
         await page.wait_for_timeout(2000)
 
+        # ✅ 3. نزيدو حرف على اسم الخدمة (باش ما يصراش conflict)
+        try:
+            service_name_field = None
+            for sel in [
+                'input[aria-label*="Service name" i]',
+                'input[formcontrolname*="serviceName" i]',
+                'input[formcontrolname*="name" i]',
+                'input[aria-label*="Name" i]',
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0 and await el.is_visible():
+                        service_name_field = el
+                        log.info(f"✅ حقل Service name: {sel}")
+                        break
+                except Exception:
+                    continue
+
+            if service_name_field:
+                try:
+                    current_name = await service_name_field.input_value()
+                except Exception:
+                    current_name = ""
+
+                log.info(f"📝 Service name الحالي: '{current_name}'")
+
+                # نزيدو حرف عشوائي صغير
+                suffix = random.choice(string.ascii_lowercase)
+                new_name = f"{current_name}-{suffix}" if current_name else f"service-{suffix}"
+
+                await service_name_field.click()
+                await page.wait_for_timeout(200)
+                await service_name_field.fill("")
+                await page.wait_for_timeout(200)
+                await service_name_field.fill(new_name)
+                await page.wait_for_timeout(400)
+                log.info(f"✅ Service name جديد: '{new_name}'")
+            else:
+                log.warning("⚠️ ما لقيناش حقل Service name")
+        except Exception as e:
+            log.warning(f"⚠️ Service name: {e}")
+
+        # ✅ 4. باقي الإعدادات
         try:
             try:
                 await page.get_by_role("radio", name="Allow public access").click(timeout=10000)
