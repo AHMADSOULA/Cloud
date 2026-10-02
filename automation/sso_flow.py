@@ -1,6 +1,7 @@
 """
 automation/sso_flow.py
 تنسيق العملية الكاملة — كل خطوة في صفحة جديدة (توفير ذاكرة)
++ تمرير sender لـ CloudConsole باش يبعث الصور
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -31,14 +32,14 @@ def extract_authuser(page_url: str) -> str:
         return '1'
 
 
-async def run_sso_flow(context, sso_url: str, image: str) -> dict:
+async def run_sso_flow(context, sso_url: str, image: str, sender=None) -> dict:
     project_id = extract_project_id(sso_url)
     if not project_id:
         raise RuntimeError("❌ Project ID ماكانش في الرابط.")
 
     log.info(f"🚀 SSO flow — project={project_id}")
 
-    console = CloudConsole(context)
+    console = CloudConsole(context, sender=sender)
 
     # ═══════ صفحة 1: TOS + Terms Dialog ═══════
     page = await context.new_page()
