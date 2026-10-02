@@ -17,7 +17,6 @@ from automation.sso_flow import run_sso_flow
 
 log = get_logger("Handlers")
 
-
 # ═══════════════════════════════════════════
 # طابور
 # ═══════════════════════════════════════════
@@ -69,7 +68,7 @@ queue = JobQueue()
 DARK_FILES = [
     {
         "name": "YOUTUBE_4H_🇺🇸",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ==",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiWVVPVFVCRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJnb29nbGUuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJnb29nbGV2aWRlby5jb20iLCJ3c1BhdGgiOiIvVGVsZWdyYW0vQEFNMl9EMy9AQUhNQUQzMjE0Iiwid3NIZWFkZXJIb3N0IjoiYWhtZWQtdmlwMS0xMDI3OTc3MDQ3ODgudXMtY2VudHJhbDEucnVuLmFwcCJ9LCJpbmplY3RDb25maWciOnsibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2NybGZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
     {
         "name": "SNAPCHAT_4H_🇺🇸",
@@ -77,50 +76,31 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H_🇺🇸",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2NybGZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtMTAyNzk3NzA0Nzg4LnVzLWNlbnRyYWwxLnJ1bi5hcHAifSwiaW5qZWN0Q29uZmlnIjp7ImVuYWJsZWQiOnRydWUsIm1vZGUiOiJQUk9YWSIsInByb3h5SG9zdCI6IjE1Ny4yNDAuOS4zOSIsInBheWxvYWQiOiJDT05ORUNUIFtob3N0XTpbcG9ydF0gSFRUUC8xLjFbY3JsZl14LWNvbm5lY3RlZC10bzogMzQuMTQzLjcyLjJbY3JsZl1wcm94eS1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZdY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXXVzZXItYWdlbnQ6IEZCQVYvMC4wIFtjcmxmXXgtaW9yZy1ic2lkOiBAQU0yX0QzW2NybGZdW2NybGZdIn19fQ==",
     },
 ]
 
 
 def _b64_pad(s: str) -> str:
-    s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    """
-    يبدل wsHeaderHost بـ new_host.
-    إذا ما كانش wsHeaderHost، يزيدو.
-    """
-    try:
-        raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
-        raw_b64 = _b64_pad(raw_b64)
-        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
-        data = json.loads(decoded)
+    b64 = _b64_pad(base_uri.split("darktunnel://", 1)[1].strip())
+    data = json.loads(base64.b64decode(b64.encode("utf-8")).decode("utf-8"))
 
-        # ✅ إذا ما كانش wsHeaderHost → نزيدوه
-        v2ray = data.get("vlessTunnelConfig", {}).get("v2rayConfig")
-        if v2ray and "wsHeaderHost" not in v2ray:
-            v2ray["wsHeaderHost"] = new_host
-            log.info("ℹ️ زدنا wsHeaderHost جديد")
-        else:
-            # نبدلو اللي كاين
-            stack = [data]
-            while stack:
-                cur = stack.pop()
-                if isinstance(cur, dict):
-                    if "wsHeaderHost" in cur:
-                        cur["wsHeaderHost"] = new_host
-                    stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
-                elif isinstance(cur, list):
-                    stack.extend(v for v in cur if isinstance(v, (dict, list)))
+    stack = [data]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            if "wsHeaderHost" in cur:
+                cur["wsHeaderHost"] = new_host
+            stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
+        elif isinstance(cur, list):
+            stack.extend(v for v in cur if isinstance(v, (dict, list)))
 
-        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        new_b64 = base64.b64encode(raw).decode("utf-8")
-        return "darktunnel://" + new_b64
-    except Exception as e:
-        log.error(f"❌ build_darktunnel: {e}", exc_info=True)
-        return None
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return "darktunnel://" + base64.b64encode(raw).decode("utf-8")
 
 
 # ═══════════════════════════════════════════
@@ -199,7 +179,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# معالجة الطابور
+# معالجة الطابور — مع sender
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -210,6 +190,7 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
+            # ✅ نبعثو رسالة باش نستعملوها كـ sender للتصوير
             msg = await context.bot.send_message(chat_id=chat_id, text="⏳ بدء العملية...")
 
             browser = StealthBrowser()
@@ -225,15 +206,23 @@ async def process_queue(chat_id, user_id, context):
                 )
 
                 domain = result["domain"]
-                log.info(f"✅ Domain: {domain}")
+                final_url = result["final_url"]
 
-                # ✅ 3 ملفات darktunnel فقط
-                for idx, dark in enumerate(DARK_FILES, 1):
+                # ✅ رسالة النتيجة
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        f"✅ **𝙃𝙚𝙧𝙚 𝙮𝙤𝙪 𝙜𝙤 𝙗𝙧𝙤**\n\n"
+                        f"🌐 **Domain:**\n`{domain}`\n\n"
+                        f"🔗 **URL:**\n`{final_url}`"
+                    ),
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+
+                # ✅ 3 ملفات darktunnel
+                for dark in DARK_FILES:
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
-                        if not new_uri:
-                            log.error(f"❌ [{idx}/3] build فشل")
-                            continue
 
                         safe_domain = "".join(
                             c for c in domain.lower()
@@ -244,17 +233,15 @@ async def process_queue(chat_id, user_id, context):
 
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
-                        bio.seek(0)
 
                         await context.bot.send_document(
                             chat_id=chat_id,
                             document=bio,
                             filename=filename,
-                            caption=f"✅ {dark['name']}",
+                            caption=f"✅ {dark['name']}\n`{domain}`",
                         )
-                        log.info(f"✅ [{idx}/3] {dark['name']}")
                     except Exception as e:
-                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
+                        log.warning(f"⚠️ dark {dark['name']}: {e}")
 
             finally:
                 try:
