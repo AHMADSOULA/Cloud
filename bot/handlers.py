@@ -1,4 +1,7 @@
 import asyncio
+import io
+import base64
+import json
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -133,6 +136,56 @@ JSON_TEMPLATE = r'''{
 
 
 # ═══════════════════════════════════════════
+# 3 ملفات DarkTunnel
+# ═══════════════════════════════════════════
+
+DARK_FILES = [
+    {
+        "name": "YOUTUBE_4H_🇺🇸",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiWVVPVFVCRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJnb29nbGUuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJnb29nbGV2aWRlby5jb20iLCJ3c1BhdGgiOiIvVGVsZWdyYW0vQEFNMl9EMy9AQUhNQUQzMjE0Iiwid3NIZWFkZXJIb3N0IjoiYWhtZWQtdmlwMS0xMDI3OTc3MDQ3ODgudXMtY2VudHJhbDEucnVuLmFwcCJ9LCJpbmplY3RDb25maWciOnsibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2NybGZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+    },
+    {
+        "name": "SNAPCHAT_4H_🇺🇸",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiU05BUENIQVRfNEhf8J-HuvCfh7giLCJ2bGVzc1R1bm5lbENvbmZpZyI6eyJ2MnJheUNvbmZpZyI6eyJob3N0IjoiZ29vZ2xlLmNvbSIsInBvcnQiOjQ0MywidXVpZCI6ImFhYWExMTExLWJiYmItNGNjYy04ZGRkLWVlZWVmZmZmMDAwMCIsInNlcnZlck5hbWVJbmRpY2F0aW9uIjoiYXBpLnNuYXBjaGF0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTEwMjc5NzcwNDc4OC51cy1jZW50cmFsMS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0=",
+    },
+    {
+        "name": "FREE_4H_🇺🇸",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtMTAyNzk3NzA0Nzg4LnVzLWNlbnRyYWwxLnJ1bi5hcHAifSwiaW5qZWN0Q29uZmlnIjp7ImVuYWJsZWQiOnRydWUsIm1vZGUiOiJQUk9YWSIsInByb3h5SG9zdCI6IjE1Ny4yNDAuOS4zOSIsInBheWxvYWQiOiJDT05ORUNUIFtob3N0XTpbcG9ydF0gSFRUUC8xLjFbY3JsZl14LWNvbm5lY3RlZC10bzogMzQuMTQzLjcyLjJbY3JsZl1wcm94eS1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZdY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXXVzZXItYWdlbnQ6IEZCQVYvMC4wIFtjcmxmXXgtaW9yZy1ic2lkOiBAQU0yX0QzW2NybGZdW2NybGZdIn19fQ==",
+    },
+]
+
+
+def _b64_pad(s: str) -> str:
+    s = s.strip()
+    return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
+
+
+def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
+    try:
+        raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
+        raw_b64 = _b64_pad(raw_b64)
+        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
+        data = json.loads(decoded)
+
+        stack = [data]
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, dict):
+                if "wsHeaderHost" in cur:
+                    cur["wsHeaderHost"] = new_host
+                stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
+            elif isinstance(cur, list):
+                stack.extend(v for v in cur if isinstance(v, (dict, list)))
+
+        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        new_b64 = base64.b64encode(raw).decode("utf-8")
+        return "darktunnel://" + new_b64
+    except Exception as e:
+        log.error(f"❌ build_darktunnel: {e}", exc_info=True)
+        return None
+
+
+# ═══════════════════════════════════════════
 # الأوامر
 # ═══════════════════════════════════════════
 
@@ -202,6 +255,8 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
     )
 
+    await update.message.reply_text("☁️ GC.Run\n✅ تم استلام الرابط. جاري التنفيذ الآن...")
+
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
@@ -217,6 +272,8 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
+            msg = await context.bot.send_message(chat_id=chat_id, text="⏳ بدء العملية...")
+
             browser = StealthBrowser()
             ctx = await browser.start()
 
@@ -225,7 +282,7 @@ async def process_queue(chat_id, user_id, context):
                     ctx,
                     job["sso_url"],
                     image=config.DEFAULT_IMAGE,
-                    sender=None,
+                    sender=msg,
                     user_tag=job["user_tag"],
                 )
 
@@ -251,9 +308,8 @@ async def process_queue(chat_id, user_id, context):
                         text=f"🔗 <b>VLESS:</b>\n<pre><code class=\"language-java\">{vless_result}</code></pre>",
                         parse_mode='html',
                     )
-                    log.info("✅ VLESS sent")
                 except Exception as e:
-                    log.error(f"❌ VLESS: {e}", exc_info=True)
+                    log.error(f"❌ VLESS: {e}")
 
                 # ✅ JSON
                 try:
@@ -263,9 +319,37 @@ async def process_queue(chat_id, user_id, context):
                         text=f"📄 <b>JSON:</b>\n<pre><code class=\"language-json\">{json_result}</code></pre>",
                         parse_mode='html',
                     )
-                    log.info("✅ JSON sent")
                 except Exception as e:
-                    log.error(f"❌ JSON: {e}", exc_info=True)
+                    log.error(f"❌ JSON: {e}")
+
+                # ✅ 3 ملفات dark
+                for idx, dark in enumerate(DARK_FILES, 1):
+                    try:
+                        new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
+                        if not new_uri:
+                            log.error(f"❌ [{idx}/3] build فشل")
+                            continue
+
+                        safe_domain = "".join(
+                            c for c in domain.lower()
+                            if c.isalnum() or c in ".-_"
+                        )[:40]
+
+                        filename = f"{dark['name']} - {safe_domain}.dark"
+
+                        bio = io.BytesIO(new_uri.encode("utf-8"))
+                        bio.name = filename
+                        bio.seek(0)
+
+                        await context.bot.send_document(
+                            chat_id=chat_id,
+                            document=bio,
+                            filename=filename,
+                            caption=f"✅ {dark['name']}\n`{domain}`",
+                        )
+                        log.info(f"✅ [{idx}/3] {dark['name']}")
+                    except Exception as e:
+                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
 
             finally:
                 try:
