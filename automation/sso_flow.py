@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — سريع (كيما GC.py)
+تنسيق العملية — سريع
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -110,10 +110,8 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
         # 6
         await report(6, "", ok=True)
-
         # 7
         await report(7, "Create", ok=True)
-
         # 8
         await report(8, "انتظار رابط النشر...")
         try:
