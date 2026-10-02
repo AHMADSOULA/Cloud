@@ -148,7 +148,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# استقبال SSO — صامت (بلا رسائل)
+# استقبال SSO
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -168,17 +168,18 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
 
-    # ✅ رسالة وحدة فقط
     await update.message.reply_text(
         f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
         f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
     )
 
+    await update.message.reply_text("☁️ GC.Run\n✅ تم استلام الرابط. جاري التنفيذ الآن...")
+
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
 # ═══════════════════════════════════════════
-# معالجة الطابور — صامت
+# معالجة الطابور — مع sender
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -189,6 +190,9 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
+            # ✅ نبعثو رسالة باش نستعملوها كـ sender للتصوير
+            msg = await context.bot.send_message(chat_id=chat_id, text="⏳ بدء العملية...")
+
             browser = StealthBrowser()
             ctx = await browser.start()
 
@@ -197,14 +201,14 @@ async def process_queue(chat_id, user_id, context):
                     ctx,
                     job["sso_url"],
                     image=config.DEFAULT_IMAGE,
-                    sender=None,  # صامت
+                    sender=msg,
                     user_tag=job["user_tag"],
                 )
 
                 domain = result["domain"]
                 final_url = result["final_url"]
 
-                # ✅ رسالة واحدة في الأخير
+                # ✅ رسالة النتيجة
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=(
