@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — صامت + معالجة أخطاء step3
+تنسيق العملية — نستعملو نفس الصفحة باش الجلسة ما تضيعش
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -40,87 +40,43 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
-    # ═══════ صفحة 1: TOS + Terms Dialog ═══════
+    # ✅ نستعملو صفحة وحدة (نفس الجلسة)
     page = await context.new_page()
-    authuser = "1"
     try:
+        # ═══════ 1) فتح SSO ═══════
         await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
+
+        # ═══════ 2) TOS الأولى ═══════
         await console.step1_welcome_screen(page)
         await page.wait_for_timeout(2000)
+
+        # ═══════ 3) Terms Dialog ═══════
         await console.step2_terms_dialog(page)
 
+        # ═══════ نستناو Dashboard ═══════
         try:
             await page.wait_for_url("**/home/dashboard**", timeout=60000)
+            log.info(f"✅ وصلنا Dashboard")
         except Exception:
-            pass
+            log.warning(f"⚠️ ما وصلناش Dashboard — URL: {page.url[:150]}")
+
+        await page.wait_for_timeout(2000)
 
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
-    finally:
-        try:
-            await page.close()
-        except Exception:
-            pass
 
-    # ═══════ صفحة 2: Enable API ═══════
-    page = await context.new_page()
-    try:
-        # ✅ نستناو 5 ثواني قبل — باش نضمنو Dashboard محمّل
-        await page.goto(
-            f"https://console.cloud.google.com/home/dashboard"
-            f"?project={project_id}&authuser={authuser}",
-            wait_until="domcontentloaded",
-            timeout=60000,
-        )
-        await page.wait_for_timeout(3000)
-        log.info(f"📍 Dashboard URL: {page.url[:150]}")
-
-        # ✅ نتحققو واش Dialog مازال مفتوح
-        try:
-            dialog_open = await page.evaluate("""
-                () => {
-                    for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog')) {
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').toLowerCase();
-                        if (t.includes('terms of service') || t.includes('i agree')) return true;
-                    }
-                    return false;
-                }
-            """)
-            if dialog_open:
-                log.warning("⚠️ Dialog مازال مفتوح في Dashboard — نغلقو")
-                await page.evaluate("""
-                    () => {
-                        for (const el of document.querySelectorAll('button, [role="button"]')) {
-                            const t = (el.innerText || '').trim().toLowerCase();
-                            if (t.includes('agree')) {
-                                try { el.disabled = false; el.click(); } catch (e) {}
-                            }
-                        }
-                    }
-                """)
-                await page.wait_for_timeout(2500)
-        except Exception:
-            pass
-
-        # ✅ نروحو للـ Enable API
+        # ═══════ 4) Enable API (نفس الصفحة) ═══════
         try:
             await console.step3_enable_api(page, project_id, authuser)
         except Exception as e:
             log.warning(f"⚠️ step3 فشل: {e}")
-            # ✅ نكملو حتى لو فشل
-            pass
-    finally:
-        try:
-            await page.close()
-        except Exception:
-            pass
 
-    # ═══════ صفحة 3: Create Cloud Run ═══════
-    page = await context.new_page()
-    try:
+        # ═══════ 5) Create Cloud Run (نفس الصفحة) ═══════
         await console.step4_create_cloud_run(page, project_id, authuser, image)
+
+        # ═══════ 6) Get URL ═══════
         final_url = await console.step5_get_deployed_url(page)
+
     finally:
         try:
             await page.close()
