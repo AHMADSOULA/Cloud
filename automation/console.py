@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — سريع جدا (60s)
+كل خطوات Google Cloud Console — سريع + step3 اختياري بدون انتظار
 """
 import asyncio
 from playwright.async_api import expect
@@ -64,7 +64,6 @@ class CloudConsole:
         if not is_tos:
             return
 
-        # Enter + JS click
         try:
             await page.keyboard.press("Enter")
         except Exception:
@@ -100,28 +99,33 @@ class CloudConsole:
     async def step2_terms_dialog(self, page):
         log.info("🚀 step2")
 
-        # فحص سريع
+        # فحص سريع — 3 محاولات × 500ms
         has_dialog = False
-        try:
-            has_dialog = await page.evaluate("""
-                () => {
-                    for (const el of document.querySelectorAll('[role="dialog"], md-dialog, mat-dialog-container, .cdk-overlay-pane')) {
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').toLowerCase();
-                        if (t.includes('terms of service') || t.includes('i agree')) return true;
+        for _ in range(3):
+            try:
+                has_dialog = await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('[role="dialog"], md-dialog, mat-dialog-container, .cdk-overlay-pane')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').toLowerCase();
+                            if (t.includes('terms of service') || t.includes('i agree')) return true;
+                        }
+                        return false;
                     }
-                    return false;
-                }
-            """)
-        except Exception:
-            pass
+                """)
+                if has_dialog:
+                    break
+            except Exception:
+                pass
+            await page.wait_for_timeout(500)
 
         if not has_dialog:
+            log.info("ℹ️ ما كاينش Dialog")
             return
 
         log.info("📋 Dialog")
 
-        # JS click على checkbox + Agree
+        # JS click على checkbox + Agree مرة وحدة
         try:
             result = await page.evaluate("""
                 () => {
@@ -164,7 +168,7 @@ class CloudConsole:
         await page.wait_for_timeout(1200)
 
     # ═══════════════════════════════════════
-    # STEP 3 — سريع (اختياري)
+    # STEP 3 — سريع (اختياري: إذا ما لقاش زر يتخطاه فورا)
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
@@ -176,41 +180,49 @@ class CloudConsole:
         )
 
         try:
-            await page.goto(api_url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(api_url, wait_until="domcontentloaded", timeout=20000)
         except Exception as e:
             raise RuntimeError(f"goto: {e}")
 
-        await page.wait_for_timeout(1500)
+        # ✅ نستناو فقط 2 ثواني
+        await page.wait_for_timeout(2000)
 
-        # فحص Sign in
+        # ✅ فحص Sign in
         try:
             if "accounts.google.com" in page.url.lower():
-                raise RuntimeError("sign in")
-        except Exception as e:
-            if "sign in" in str(e):
-                raise
+                log.warning("⚠️ sign in — نتجاوزو")
+                return  # ✅ ما نطيحوش، نكملو
+        except Exception:
+            pass
 
-        # JS click Enable/Manage
-        try:
-            clicked = await page.evaluate("""
-                () => {
-                    for (const el of document.querySelectorAll('button, [role="button"]')) {
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t === 'enable' || t === 'manage') {
-                            try { el.click(); return t; } catch (e) {}
+        # ✅ فحص سريع لزر Enable/Manage — 3 محاولات × 500ms فقط
+        clicked = None
+        for _ in range(3):
+            try:
+                clicked = await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            if (t === 'enable' || t === 'manage') {
+                                try { el.click(); return t; } catch (e) {}
+                            }
                         }
+                        return null;
                     }
-                    return null;
-                }
-            """)
-            if clicked:
-                log.info(f"✅ API: {clicked}")
-                await page.wait_for_timeout(1500)
-            else:
-                raise RuntimeError("ما لقيناش زر")
-        except Exception as e:
-            raise RuntimeError(f"step3: {e}")
+                """)
+                if clicked:
+                    break
+            except Exception:
+                pass
+            await page.wait_for_timeout(500)
+
+        if clicked:
+            log.info(f"✅ API: {clicked}")
+            await page.wait_for_timeout(1500)
+        else:
+            log.warning("⚠️ ما لقيناش زر — نتجاوزو")
+            return  # ✅ ما نطيحوش، نكملو
 
     # ═══════════════════════════════════════
     # STEP 4 — سريع
@@ -246,7 +258,7 @@ class CloudConsole:
             await page.wait_for_timeout(200)
             await page.keyboard.type(image, delay=20)
             log.info("✅ رابط الحاوية")
-        except Exception as e:
+        except Exception:
             try:
                 await page.keyboard.type(image, delay=20)
                 log.info("✅ رابط الحاوية (fallback)")
