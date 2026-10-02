@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — كل طرق GC.py + سريع
+كل خطوات Google Cloud Console — كل طرق GC.py + خفيف
 """
 import asyncio
 from playwright.async_api import expect
@@ -16,14 +16,15 @@ class CloudConsole:
         self.user_tag = user_tag or "@user"
 
     async def _shot(self, page, caption: str = ""):
+        """screenshot + send — للفشل فقط"""
         if not self.sender:
             return
         try:
-            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
+            path = f"/tmp/err_{int(asyncio.get_event_loop().time()*1000)}.png"
             await page.screenshot(path=path, full_page=False, timeout=8000)
             with open(path, "rb") as f:
                 try:
-                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
+                    await self.sender.reply_photo(photo=f, caption=f"❌ {caption}"[:1000])
                 except Exception:
                     pass
             import os
@@ -47,22 +48,19 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(1500)
 
-        # ✅ GC.py: Enter
         try:
             await page.keyboard.press("Enter")
         except Exception:
             pass
 
-        # ✅ GC.py: locator("text='I understand'")
         try:
             button = page.locator("text='I understand'")
             if await button.is_visible(timeout=3000):
                 await button.click()
-                log.info("✅ clicked I understand")
+                log.info("✅ I understand")
         except Exception:
             pass
 
-        # ✅ إضافي: JS
         try:
             await page.evaluate("""
                 () => {
@@ -94,7 +92,6 @@ class CloudConsole:
             await agree_btn.wait_for(state="visible", timeout=8000)
             log.info("✅ Agree ظهر")
 
-            # ✅ GC.py: checkboxes.nth(0) + nth(1)
             checkboxes = page.get_by_role("checkbox")
             try:
                 cnt = await checkboxes.count()
@@ -107,10 +104,8 @@ class CloudConsole:
             except Exception:
                 pass
 
-            # ✅ GC.py: agree_btn.click()
             try:
                 await agree_btn.click()
-                log.info("✅ Agree clicked")
             except Exception:
                 await page.evaluate("""
                     () => {
@@ -124,9 +119,8 @@ class CloudConsole:
                 """)
 
             await page.wait_for_timeout(1500)
-
         except Exception as e:
-            log.warning(f"⚠️ Terms Dialog: {e}")
+            log.warning(f"⚠️ Dialog: {e}")
             try:
                 await page.evaluate("""
                     () => {
@@ -165,7 +159,6 @@ class CloudConsole:
         await page.goto(api_url, wait_until="domcontentloaded", timeout=30000)
         await page.wait_for_timeout(2000)
 
-        # فحص Sign in
         try:
             if "accounts.google.com" in page.url.lower():
                 log.warning("⚠️ sign in — نتجاوزو")
@@ -173,7 +166,6 @@ class CloudConsole:
         except Exception:
             pass
 
-        # ✅ GC.py: get_by_role
         enable_btn = page.get_by_role("button", name="Enable")
         manage_btn = page.get_by_role("button", name="Manage")
         disable_btn = page.get_by_text("Disable API")
@@ -186,14 +178,13 @@ class CloudConsole:
                     await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=45000)
                 except Exception:
                     pass
-                log.info("✅ Enable clicked")
             elif await manage_btn.is_visible():
-                log.info("ℹ️ API مفعّل مسبقا")
+                log.info("ℹ️ API مفعّل")
         except Exception as e:
-            log.warning(f"⚠️ step3 فشل (نكملو): {e}")
+            log.warning(f"⚠️ step3: {e}")
 
     # ═══════════════════════════════════════
-    # STEP 4 — كيما GC.py بالضبط
+    # STEP 4 — كيما GC.py
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -203,21 +194,16 @@ class CloudConsole:
         )
         log.info("🌐 step4")
 
-        # ✅ GC.py: goto + wait 5s
         await page.goto(run_url, wait_until="domcontentloaded", timeout=60000)
         await page.wait_for_timeout(5000)
 
-        # ✅ GC.py: get_by_text("Container Image URL").first.click()
-        # + JS fallback
+        # ✅ GC.py
         image_found = False
         try:
             label = page.get_by_text("Container Image URL").first
             await label.click(timeout=10000)
             image_found = True
-            log.info("✅ Container Image URL clicked (GC.py)")
-        except Exception as e:
-            log.warning(f"⚠️ get_by_text: {e}")
-            # ✅ JS fallback
+        except Exception:
             try:
                 clicked = await page.evaluate("""
                     () => {
@@ -232,26 +218,21 @@ class CloudConsole:
                 """)
                 if clicked:
                     image_found = True
-                    log.info("✅ Container Image URL clicked (JS)")
             except Exception:
                 pass
 
         if not image_found:
-            # ✅ fallback: أول input
             try:
                 inp = page.locator('input[type="text"]').first
                 await inp.click(timeout=5000)
-                log.info("ℹ️ أول input")
             except Exception as e:
-                raise RuntimeError(f"فشل لقاء حقل: {e}")
+                raise RuntimeError(f"فشل حقل: {e}")
 
         await page.wait_for_timeout(500)
         await page.keyboard.type(image, delay=30)
-        log.info("✅ رابط الحاوية")
 
         await page.wait_for_timeout(2000)
 
-        # ✅ GC.py: radios + Create
         try:
             await page.get_by_role("radio", name="Allow public access").click(timeout=8000)
         except Exception:
@@ -273,7 +254,6 @@ class CloudConsole:
             await create_btn.click(force=True, timeout=8000)
             log.info("✅ Create")
         except Exception as e:
-            # ✅ JS fallback
             try:
                 clicked = await page.evaluate("""
                     () => {
@@ -287,35 +267,27 @@ class CloudConsole:
                         return null;
                     }
                 """)
-                if clicked:
-                    log.info(f"✅ Create (JS): {clicked}")
-                else:
+                if not clicked:
                     raise RuntimeError(f"فشل Create: {e}")
             except Exception as e2:
                 raise RuntimeError(f"فشل Create: {e2}")
 
-        await page.wait_for_timeout(1500)
-        await self._shot(page, "🚀 بعد Create")
-
     # ═══════════════════════════════════════
-    # STEP 5 — كيما GC.py: locator على نفس الصفحة
+    # STEP 5 — كيما GC.py
     # ═══════════════════════════════════════
 
     async def step5_get_deployed_url(self, page):
         log.info("⏳ step5")
 
-        # ✅ GC.py: locator('a[href*="run.app"]')
         link_locator = page.locator('a[href*="run.app"]')
         try:
             await link_locator.wait_for(state="visible", timeout=60000)
             final_url = await link_locator.get_attribute("href")
-            log.info(f"✅ لقيناه: {final_url}")
             return final_url
         except Exception:
             pass
 
-        # ✅ fallback: JS
-        for i in range(30):  # 30 × 3s = 90s
+        for i in range(30):
             try:
                 url = await page.evaluate("""
                     () => {
@@ -331,7 +303,6 @@ class CloudConsole:
                     }
                 """)
                 if url:
-                    log.info(f"✅ لقيناه (JS): {url}")
                     return url
             except Exception:
                 pass
