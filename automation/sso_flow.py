@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — صامت
+صفحة وحدة + step3 اختياري
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -40,42 +40,55 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     console = CloudConsole(context, sender=None, user_tag=user_tag)
 
-    # صفحة 1
+    # ✅ صفحة وحدة
     page = await context.new_page()
     try:
+        # ═══════ 1) SSO ═══════
         await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
+
+        # ═══════ 2) TOS ═══════
         await console.step1_welcome_screen(page)
         await page.wait_for_timeout(1500)
+
+        # ═══════ 3) Terms Dialog ═══════
         await console.step2_terms_dialog(page)
 
+        # ═══════ نستناو Dashboard ═══════
         try:
             await page.wait_for_url("**/home/dashboard**", timeout=60000)
+            log.info("✅ Dashboard")
         except Exception:
-            pass
+            log.warning("⚠️ ماشي Dashboard")
+
+        await page.wait_for_timeout(1500)
 
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
-    finally:
-        try:
-            await page.close()
-        except Exception:
-            pass
 
-    # صفحة 2
-    page = await context.new_page()
-    try:
-        await console.step3_enable_api(page, project_id, authuser)
-    finally:
+        # ═══════ 4) Enable API — اختياري ═══════
         try:
-            await page.close()
-        except Exception:
-            pass
+            await console.step3_enable_api(page, project_id, authuser)
+            log.info("✅ step3 نجح")
+        except Exception as e:
+            log.warning(f"⚠️ step3 فشل (نكملو): {e}")
+            # نرجعو للـ Dashboard
+            try:
+                await page.goto(
+                    f"https://console.cloud.google.com/home/dashboard"
+                    f"?project={project_id}&authuser={authuser}",
+                    wait_until="domcontentloaded",
+                    timeout=60000,
+                )
+                await page.wait_for_timeout(2000)
+            except Exception:
+                pass
 
-    # صفحة 3
-    page = await context.new_page()
-    try:
+        # ═══════ 5) Create Cloud Run ═══════
         await console.step4_create_cloud_run(page, project_id, authuser, image)
+
+        # ═══════ 6) Get URL ═══════
         final_url = await console.step5_get_deployed_url(page)
+
     finally:
         try:
             await page.close()
