@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — مع تصوير عند Create + step5 كيما GC.py
+كل خطوات Google Cloud Console — مأخوذة من GC.py + سريع
 """
 import asyncio
 from playwright.async_api import expect
@@ -15,10 +15,6 @@ class CloudConsole:
         self.sender = sender
         self.user_tag = user_tag or "@user"
 
-    # ═══════════════════════════════════════
-    # 📸 التصوير
-    # ═══════════════════════════════════════
-
     async def _shot(self, page, caption: str = ""):
         if not self.sender:
             return
@@ -28,52 +24,45 @@ class CloudConsole:
             with open(path, "rb") as f:
                 try:
                     await self.sender.reply_photo(photo=f, caption=caption[:1000])
-                    log.info(f"📸 {caption}")
-                except Exception as e:
-                    log.warning(f"⚠️ reply_photo: {e}")
+                except Exception:
+                    pass
             import os
             try:
                 os.remove(path)
             except Exception:
                 pass
-        except Exception as e:
-            log.warning(f"⚠️ _shot: {e}")
+        except Exception:
+            pass
 
     # ═══════════════════════════════════════
-    # STEP 1
+    # STEP 1 — كيما GC.py
     # ═══════════════════════════════════════
 
     async def step1_welcome_screen(self, page):
-        log.info("🚀 step1")
-
-        await page.wait_for_timeout(1500)
+        log.info("🚀 step1: Welcome / TOS")
 
         try:
-            is_tos = await page.evaluate("""
-                () => {
-                    const url = window.location.href.toLowerCase();
-                    if (url.includes('workspacetermsofservice') || url.includes('speedbump')) return true;
-                    const text = (document.body.innerText || '').toLowerCase();
-                    if (text.includes('welcome to your new account')) return true;
-                    for (const el of document.querySelectorAll('button, [role="button"]')) {
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t.includes('i understand')) return true;
-                    }
-                    return false;
-                }
-            """)
+            await page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
-            return
+            pass
+        await page.wait_for_timeout(1500)
 
-        if not is_tos:
-            return
-
+        # ✅ GC.py: keyboard.press("Enter")
         try:
             await page.keyboard.press("Enter")
         except Exception:
             pass
 
+        # ✅ GC.py: locator("text='I understand'")
+        try:
+            button = page.locator("text='I understand'")
+            if await button.is_visible(timeout=3000):
+                await button.click()
+                log.info("✅ clicked I understand (GC.py)")
+        except Exception:
+            pass
+
+        # ✅ إضافي: JS click
         try:
             clicked = await page.evaluate("""
                 () => {
@@ -91,141 +80,140 @@ class CloudConsole:
                 }
             """)
             if clicked:
-                log.info(f"✅ TOS: {clicked}")
+                log.info(f"✅ TOS JS: {clicked}")
         except Exception:
             pass
 
-        await page.wait_for_timeout(1000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=10000)
+        except Exception:
+            pass
 
     # ═══════════════════════════════════════
-    # STEP 2
+    # STEP 2 — كيما GC.py
     # ═══════════════════════════════════════
 
     async def step2_terms_dialog(self, page):
-        log.info("🚀 step2")
+        log.info("🚀 step2: Terms Dialog")
 
-        has_dialog = False
-        for _ in range(5):
-            try:
-                has_dialog = await page.evaluate("""
-                    () => {
-                        for (const el of document.querySelectorAll('[role="dialog"], md-dialog, mat-dialog-container, .cdk-overlay-pane')) {
-                            if (el.offsetParent === null) continue;
-                            const t = (el.innerText || '').toLowerCase();
-                            if (t.includes('terms of service') || t.includes('i agree')) return true;
-                        }
-                        return false;
-                    }
-                """)
-                if has_dialog:
-                    break
-            except Exception:
-                pass
-            await page.wait_for_timeout(600)
-
-        if not has_dialog:
-            return
-
-        log.info("📋 Dialog")
+        # ✅ GC.py: get_by_role("button", name="Agree and continue")
+        agree_btn = page.get_by_role("button", name="Agree and continue")
 
         try:
-            result = await page.evaluate("""
-                () => {
-                    const out = { checkbox: false, agree: false };
+            await agree_btn.wait_for(state="visible", timeout=10000)
+            log.info("✅ Agree and continue ظهر")
 
-                    for (const el of document.querySelectorAll('mat-checkbox, [role="checkbox"], input[type="checkbox"], .mdc-checkbox')) {
-                        if (el.offsetParent === null) continue;
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width === 0 || rect.width > 200) continue;
-                        try {
-                            el.click();
-                            const inner = el.querySelector('input');
-                            if (inner) inner.click();
-                            out.checkbox = true;
-                        } catch (e) {}
-                        break;
-                    }
+            # ✅ GC.py: checkboxes.nth(0) + nth(1)
+            checkboxes = page.get_by_role("checkbox")
+            try:
+                cnt = await checkboxes.count()
+                log.info(f"📋 عدد checkboxes: {cnt}")
 
-                    for (const el of document.querySelectorAll('button, [role="button"]')) {
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t.includes('agree and continue') || t === 'agree') {
-                            try {
-                                el.disabled = false;
-                                el.removeAttribute('disabled');
-                                el.removeAttribute('aria-disabled');
-                                el.click();
-                                out.agree = true;
-                            } catch (e) {}
-                            break;
+                if cnt >= 2:
+                    await checkboxes.nth(0).click()
+                    await asyncio.sleep(0.5)
+                    await checkboxes.nth(1).click()
+                    log.info("✅ checkbox nth(0)+nth(1) (GC.py)")
+                elif cnt == 1:
+                    await checkboxes.nth(0).click()
+                    log.info("✅ checkbox nth(0)")
+            except Exception as e:
+                log.warning(f"⚠️ checkboxes: {e}")
+
+            # ✅ GC.py: agree_btn.click()
+            try:
+                await agree_btn.click()
+                log.info("✅ Agree and continue clicked (GC.py)")
+            except Exception as e:
+                log.warning(f"⚠️ click agree: {e}")
+                await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            if (t.includes('agree and continue')) {
+                                try { el.disabled = false; el.click(); } catch (e) {}
+                            }
                         }
                     }
-                    return out;
-                }
-            """)
-            log.info(f"✅ Dialog: {result}")
-        except Exception as e:
-            log.warning(f"⚠️ {e}")
+                """)
 
-        await page.wait_for_timeout(1500)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:
+                pass
+
+            await page.wait_for_timeout(1500)
+
+        except Exception as e:
+            log.warning(f"⚠️ Terms Dialog ما ظهرش: {e}")
+            # fallback: JS
+            try:
+                await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('mat-checkbox, [role="checkbox"], input[type="checkbox"]')) {
+                            if (el.offsetParent === null) continue;
+                            try { el.click(); } catch (e) {}
+                        }
+                    }
+                """)
+                await asyncio.sleep(1)
+                await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            if (t.includes('agree and continue')) {
+                                try { el.disabled = false; el.click(); } catch (e) {}
+                            }
+                        }
+                    }
+                """)
+                await asyncio.sleep(1)
+            except Exception:
+                pass
 
     # ═══════════════════════════════════════
-    # STEP 3 — اختياري بدون انتظار
+    # STEP 3 — كيما GC.py
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
-        log.info("🚀 step3")
+        log.info("🚀 step3: Enable API")
 
         api_url = (
             f"https://console.cloud.google.com/apis/library/"
             f"run.googleapis.com?project={project_id}&authuser={authuser}"
         )
-
-        try:
-            await page.goto(api_url, wait_until="domcontentloaded", timeout=20000)
-        except Exception as e:
-            raise RuntimeError(f"goto: {e}")
-
+        await page.goto(api_url, wait_until="domcontentloaded", timeout=30000)
         await page.wait_for_timeout(2000)
 
         # فحص Sign in
         try:
             if "accounts.google.com" in page.url.lower():
-                log.warning("⚠️ sign in")
+                log.warning("⚠️ sign in — نتجاوزو")
                 return
         except Exception:
             pass
 
-        # 3 محاولات × 500ms
-        clicked = None
-        for _ in range(3):
-            try:
-                clicked = await page.evaluate("""
-                    () => {
-                        for (const el of document.querySelectorAll('button, [role="button"]')) {
-                            if (el.offsetParent === null) continue;
-                            const t = (el.innerText || '').trim().toLowerCase();
-                            if (t === 'enable' || t === 'manage') {
-                                try { el.click(); return t; } catch (e) {}
-                            }
-                        }
-                        return null;
-                    }
-                """)
-                if clicked:
-                    break
-            except Exception:
-                pass
-            await page.wait_for_timeout(500)
+        # ✅ GC.py: get_by_role
+        enable_btn = page.get_by_role("button", name="Enable")
+        manage_btn = page.get_by_role("button", name="Manage")
+        disable_btn = page.get_by_text("Disable API")
 
-        if clicked:
-            log.info(f"✅ API: {clicked}")
-            await page.wait_for_timeout(1500)
-        else:
-            log.warning("⚠️ ما لقيناش زر — نتجاوزو")
+        try:
+            await expect(enable_btn.or_(manage_btn)).to_be_visible(timeout=10000)
+            if await enable_btn.is_visible():
+                await enable_btn.click()
+                try:
+                    await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=45000)
+                except Exception:
+                    pass
+                log.info("✅ Enable clicked (GC.py)")
+            elif await manage_btn.is_visible():
+                log.info("ℹ️ API مفعّل مسبقا")
+        except Exception as e:
+            log.warning(f"⚠️ step3 فشل (نكملو): {e}")
 
     # ═══════════════════════════════════════
-    # STEP 4 — Create + screenshot
+    # STEP 4 — كيما GC.py + screenshot عند Create
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -233,98 +221,80 @@ class CloudConsole:
             f"https://console.cloud.google.com/run/create"
             f"?project={project_id}&authuser={authuser}"
         )
-        log.info("🌐 step4")
+        log.info("🌐 step4: Create Cloud Run")
 
-        try:
-            await page.goto(run_url, wait_until="domcontentloaded", timeout=60000)
-        except Exception:
-            try:
-                await page.goto(run_url, wait_until="commit", timeout=60000)
-            except Exception:
-                pass
+        await page.goto(run_url, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_timeout(5000)
 
-        try:
-            await page.wait_for_selector('text="Container Image URL"', timeout=20000)
-        except Exception:
-            log.warning("⚠️ الحقل ما ظهرش")
-
-        await page.wait_for_timeout(1000)
-
+        # ✅ GC.py: get_by_text("Container Image URL").first.click()
         try:
             label = page.get_by_text("Container Image URL").first
-            await label.click(timeout=5000)
-            await page.wait_for_timeout(200)
-            await page.keyboard.type(image, delay=20)
-            log.info("✅ رابط الحاوية")
-        except Exception:
-            try:
-                await page.keyboard.type(image, delay=20)
-                log.info("✅ رابط الحاوية (fallback)")
-            except Exception as e2:
-                raise RuntimeError(f"فشل: {e2}")
+            await label.click()
+            await page.wait_for_timeout(500)
+            await page.keyboard.type(image, delay=50)
+            log.info("✅ رابط الحاوية (GC.py)")
+        except Exception as e:
+            raise RuntimeError(f"فشل في الضغط وكتابة الرابط: {e}")
 
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(3000)
 
+        # ✅ GC.py: radios + Create
         try:
+            await page.get_by_role("radio", name="Allow public access").click()
+            await page.get_by_role("radio", name="Instance-based").click()
             try:
-                await page.get_by_role("radio", name="Allow public access").click(timeout=5000)
-            except Exception:
-                pass
-            try:
-                await page.get_by_role("radio", name="Instance-based").click(timeout=5000)
-            except Exception:
-                pass
-            try:
-                await page.get_by_role("button", name="Hide").click(timeout=1500)
+                await page.get_by_role("button", name="Hide").click(timeout=2000)
             except Exception:
                 pass
 
             await page.keyboard.press("End")
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(1000)
 
             create_btn = page.get_by_role("button", name="Create")
-            await create_btn.click(force=True, timeout=5000)
-            log.info("✅ Create")
+            await create_btn.click(force=True)
+            log.info("✅ Create (GC.py)")
 
-            # ✅ screenshot عند الضغط على Create
             await page.wait_for_timeout(1500)
             await self._shot(page, "🚀 بعد الضغط على Create")
         except Exception as e:
-            raise RuntimeError(f"فشل: {e}")
+            raise RuntimeError(f"فشل الإعدادات: {e}")
 
     # ═══════════════════════════════════════
-    # STEP 5 — كيما GC.py: بلا goto، ينتظر في نفس الصفحة
+    # STEP 5 — كيما GC.py: locator على نفس الصفحة
     # ═══════════════════════════════════════
 
     async def step5_get_deployed_url(self, page):
-        log.info("⏳ step5: نستناو run.app (بلا goto)")
+        log.info("⏳ step5: نستناو run.app (GC.py)")
 
-        # ✅ كيما GC.py: نستعملو locator على نفس الصفحة
-        for i in range(60):  # 60 × 3s = 180s
-            try:
-                # نلقاو الرابط في الصفحة الحالية
-                url = await page.evaluate("""
-                    () => {
-                        const links = document.querySelectorAll('a');
-                        for (const a of links) {
-                            const href = a.href || '';
-                            if (href.includes('.run.app')) return href.split('?')[0].split('#')[0];
+        # ✅ GC.py: locator('a[href*="run.app"]') مع timeout
+        link_locator = page.locator('a[href*="run.app"]')
+        try:
+            await link_locator.wait_for(state="visible", timeout=120000)
+            final_url = await link_locator.get_attribute("href")
+            log.info(f"✅ لقيناه: {final_url}")
+            return final_url
+        except Exception:
+            # fallback: JS
+            for i in range(40):  # 40 × 3s = 120s
+                try:
+                    url = await page.evaluate("""
+                        () => {
+                            const links = document.querySelectorAll('a');
+                            for (const a of links) {
+                                const href = a.href || '';
+                                if (href.includes('.run.app')) return href.split('?')[0].split('#')[0];
+                            }
+                            const body = document.body.innerText || '';
+                            const m = body.match(/https:\\/\\/[a-zA-Z0-9\\-]+\\.run\\.app/);
+                            if (m) return m[0];
+                            return null;
                         }
-                        const body = document.body.innerText || '';
-                        const m = body.match(/https:\\/\\/[a-zA-Z0-9\\-]+\\.run\\.app/);
-                        if (m) return m[0];
-                        return null;
-                    }
-                """)
-                if url:
-                    log.info(f"✅ لقيناه: {url}")
-                    return url
-            except Exception:
-                pass
+                    """)
+                    if url:
+                        log.info(f"✅ لقيناه (JS): {url}")
+                        return url
+                except Exception:
+                    pass
+                await page.wait_for_timeout(3000)
 
-            await page.wait_for_timeout(3000)
-
-            if (i + 1) % 10 == 0:
-                log.info(f"⏳ مازال... ({(i+1)*3}s)")
-
-        raise RuntimeError("ما لقيناش رابط run.app بعد 180s")
+            raise RuntimeError("ما لقيناش رابط run.app")
