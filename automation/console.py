@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — صامت + Service name فريد
+كل خطوات Google Cloud Console — صامت + Service name فريد + screenshot عند Create
 """
 import asyncio
 from playwright.async_api import expect
@@ -16,7 +16,26 @@ class CloudConsole:
         self.user_tag = user_tag or "@user"
 
     async def _shot(self, page, caption: str = ""):
-        return
+        """يصوّر الصفحة ويبعثها في Telegram"""
+        if not self.sender:
+            log.warning("⚠️ ما كاينش sender — ما نقدرش نبعث صورة")
+            return
+        try:
+            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
+            await page.screenshot(path=path, full_page=False, timeout=15000)
+            with open(path, "rb") as f:
+                try:
+                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
+                    log.info(f"📸 screenshot sent: {caption}")
+                except Exception as e:
+                    log.warning(f"⚠️ reply_photo: {e}")
+            import os
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        except Exception as e:
+            log.warning(f"⚠️ _shot: {e}")
 
     # ═══════════════════════════════════════
     # STEP 1
@@ -457,7 +476,7 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4 — مع Service name فريد
+    # STEP 4 — مع Service name فريد + screenshot عند Create
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -477,7 +496,7 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(4000)
 
-        # حقل Container Image URL
+        # حقل Image
         image_found = False
         for attempt in range(15):
             try:
@@ -486,7 +505,6 @@ class CloudConsole:
                     if await label.count() > 0 and await label.is_visible():
                         await label.click()
                         image_found = True
-                        log.info("✅ get_by_text")
                         break
                 except Exception:
                     pass
@@ -496,7 +514,6 @@ class CloudConsole:
                     if await inp.count() > 0 and await inp.is_visible():
                         await inp.click()
                         image_found = True
-                        log.info("✅ input[aria-label]")
                         break
                 except Exception:
                     pass
@@ -506,7 +523,6 @@ class CloudConsole:
                     if await el.count() > 0 and await el.is_visible():
                         await el.click()
                         image_found = True
-                        log.info("✅ text regex")
                         break
                 except Exception:
                     pass
@@ -526,7 +542,6 @@ class CloudConsole:
                     """)
                     if clicked:
                         image_found = True
-                        log.info("✅ JS click")
                         break
                 except Exception:
                     pass
@@ -540,7 +555,6 @@ class CloudConsole:
                 inp = page.locator('input[type="text"]').first
                 if await inp.count() > 0:
                     await inp.click()
-                    log.info("ℹ️ أول input")
                 else:
                     raise RuntimeError("ما لقيناش حقل Image")
             except Exception as e:
@@ -555,7 +569,7 @@ class CloudConsole:
 
         await page.wait_for_timeout(2000)
 
-        # ✅ Service name فريد
+        # Service name فريد
         try:
             service_name_field = None
             for sel in [
@@ -568,7 +582,6 @@ class CloudConsole:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
                         service_name_field = el
-                        log.info(f"✅ حقل Service name")
                         break
                 except Exception:
                     continue
@@ -579,9 +592,6 @@ class CloudConsole:
                 except Exception:
                     current_name = ""
 
-                log.info(f"📝 Service name الحالي: '{current_name}'")
-
-                # ✅ نزيدو حرف عشوائي
                 suffix = random.choice(string.ascii_lowercase)
                 new_name = f"{current_name}-{suffix}" if current_name else f"service-{suffix}"
 
@@ -591,13 +601,11 @@ class CloudConsole:
                 await page.wait_for_timeout(200)
                 await service_name_field.fill(new_name)
                 await page.wait_for_timeout(400)
-                log.info(f"✅ Service name جديد: '{new_name}'")
-            else:
-                log.warning("⚠️ ما لقيناش حقل Service name")
+                log.info(f"✅ Service name: '{new_name}'")
         except Exception as e:
             log.warning(f"⚠️ Service name: {e}")
 
-        # إعدادات + Create
+        # إعدادات
         try:
             try:
                 await page.get_by_role("radio", name="Allow public access").click(timeout=10000)
@@ -614,12 +622,21 @@ class CloudConsole:
 
             await page.keyboard.press("End")
             await page.wait_for_timeout(600)
+        except Exception as e:
+            log.warning(f"⚠️ إعدادات: {e}")
 
+        # ✅ نضغطو Create + نبعثو screenshot
+        try:
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
             log.info("✅ Create")
+
+            # ✅ نستناو ثانية ونصوّرو
+            await page.wait_for_timeout(2000)
+            await self._shot(page, "🚀 بعد الضغط على Create")
+
         except Exception as e:
-            raise RuntimeError(f"فشل الإعدادات: {str(e)}")
+            raise RuntimeError(f"فشل Create: {str(e)}")
 
     # ═══════════════════════════════════════
     # STEP 5 — انتظار أطول
@@ -628,7 +645,7 @@ class CloudConsole:
     async def step5_get_deployed_url(self, page):
         log.info("⏳ step5: نستناو run.app...")
 
-        for i in range(240):  # 240 × 2.5 = 600s = 10 دقايق
+        for i in range(240):
             try:
                 url = await page.evaluate("""
                     () => {
