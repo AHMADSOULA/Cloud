@@ -160,6 +160,44 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚫 تم الإلغاء.")
 
 
+# ═══════════════════════════════════════════
+# ✅ فحص نوع الرابط
+# ═══════════════════════════════════════════
+
+def is_full_sso_url(url: str) -> bool:
+    """
+    ✅ SSO كامل = ما تطلبش كلمة سر.
+    العلامات:
+      - skills.google/google_sso
+      - فيه token=
+      - فيه Password=
+    """
+    u = (url or "").lower()
+
+    if "skills.google/google_sso" in u:
+        return True
+    if "token=" in u:
+        return True
+    if "password=" in u:
+        return True
+
+    return False
+
+
+def is_direct_addsession_url(url: str) -> bool:
+    """
+    ✅ AddSession مباشر = تطلب كلمة سر.
+    """
+    u = (url or "").lower()
+    if "accounts.google.com/addsession" in u and "skills.google" not in u:
+        return True
+    return False
+
+
+# ═══════════════════════════════════════════
+# handle_url
+# ═══════════════════════════════════════════
+
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     urls = extract_urls(text)
@@ -169,45 +207,67 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sso_url = urls[0]
     user = update.effective_user
 
-    if "skills.google" not in sso_url and "qwiklabs" not in sso_url:
+    # ✅ لازم يكون رابط Google Skills
+    if "skills.google" not in sso_url and "qwiklabs" not in sso_url and "accounts.google.com" not in sso_url:
         await update.message.reply_text("⚠️ الرابط لا يبدو من Google Skills.")
         return
 
     user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
 
-    # ✅ نحاولو نستخرجو الإيميل وكلمة السر من الرابط
-    email = extract_email_from_url(sso_url)
-    password = extract_password_from_url(sso_url)
+    log.info(f"🔗 URL: {sso_url[:150]}")
+    log.info(f"🔍 is_full_sso={is_full_sso_url(sso_url)}")
+    log.info(f"🔍 is_direct_addsession={is_direct_addsession_url(sso_url)}")
 
-    log.info(f"📧 Email: {email}, 🔑 Password: {'✅' if password else '❌'}")
-
-    # ✅ إذا كاين إيميل ولكن بلا كلمة سر → نطلبوها
-    if email and not password:
-        await db.set_session(
-            user_id=user.id,
-            sso_url=sso_url,
-            state="waiting_password",
-        )
+    # ✅ 1. SSO كامل → ما تطلبش كلمة سر
+    if is_full_sso_url(sso_url):
+        log.info("✅ رابط SSO كامل — بلا كلمة سر")
+        num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
         await update.message.reply_text(
-            f"📧 لقينا الإيميل:\n`{email}`\n\n"
-            f"🔑 *أرسل كلمة السر باش نكملو:*",
-            parse_mode=ParseMode.MARKDOWN,
+            f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
+            f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
         )
+        asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
         return
 
-    # ✅ إذا كاين إيميل + كلمة سر → نكملو
+    # ✅ 2. AddSession مباشر → تطلب كلمة سر
+    if is_direct_addsession_url(sso_url):
+        email = extract_email_from_url(sso_url)
+        log.info(f"📧 AddSession — email={email}")
+
+        if email:
+            await db.set_session(
+                user_id=user.id,
+                sso_url=sso_url,
+                state="waiting_password",
+            )
+            await update.message.reply_text(
+                f"📧 لقينا الإيميل:\n`{email}`\n\n"
+                f"🔑 *أرسل كلمة السر باش نكملو:*",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+        else:
+            # ما لقيناش إيميل، نطلبو الرابط كامل
+            await update.message.reply_text(
+                "⚠️ ما قدرناش نستخرجو الإيميل من الرابط.\n"
+                "أرسل الرابط الكامل (skills.google/google_sso?...)"
+            )
+            return
+
+    # ✅ 3. رابط آخر → نكملو عادي
+    log.info("ℹ️ رابط آخر — نكملو")
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-
     await update.message.reply_text(
-        f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
-        f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
+        f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن."
     )
-
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
+# ═══════════════════════════════════════════
+# handle_password
+# ═══════════════════════════════════════════
+
 async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يستقبل كلمة السر من المستخدم"""
     user = update.effective_user
     password = (update.message.text or "").strip()
 
@@ -218,7 +278,6 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not session or session.get("state") != "waiting_password":
         return
 
-    # ✅ نحذفو الرسالة للأمان
     try:
         await update.message.delete()
     except Exception:
@@ -240,9 +299,7 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
 
-    await update.message.reply_text(
-        f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن."
-    )
+    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
 
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
@@ -259,7 +316,6 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
-            # ✅ رسالة وحدة تتبدل (من sso_flow)
             msg = await context.bot.send_message(chat_id=chat_id, text="🚀 جاري التنفيذ... [0/8]")
 
             browser = StealthBrowser()
