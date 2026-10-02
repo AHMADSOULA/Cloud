@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — صامت (بلا رسائل للخطوات)
+تنسيق العملية — صفحة وحدة + تمرير sender
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -40,7 +40,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
-    # ═══════ صفحة 1: TOS + Terms Dialog ═══════
+    # صفحة 1
     page = await context.new_page()
     try:
         await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
@@ -61,7 +61,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             pass
 
-    # ═══════ صفحة 2: Enable API ═══════
+    # صفحة 2
     page = await context.new_page()
     try:
         await console.step3_enable_api(page, project_id, authuser)
@@ -71,7 +71,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             pass
 
-    # ═══════ صفحة 3: Create Cloud Run ═══════
+    # صفحة 3
     page = await context.new_page()
     try:
         await console.step4_create_cloud_run(page, project_id, authuser, image)
