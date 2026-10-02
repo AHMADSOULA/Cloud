@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — صامت (بلا تقارير، بلا تصوير)
+كل خطوات Google Cloud Console — مع step2 قوية
 """
 import asyncio
 from playwright.async_api import expect
@@ -16,7 +16,7 @@ class CloudConsole:
         self.user_tag = user_tag or "@user"
 
     # ═══════════════════════════════════════
-    # STEP 1: TOS الأولى
+    # STEP 1
     # ═══════════════════════════════════════
 
     async def step1_welcome_screen(self, page):
@@ -143,128 +143,215 @@ class CloudConsole:
                 pass
 
     # ═══════════════════════════════════════
-    # STEP 2: Terms Dialog
+    # STEP 2 — النسخة القوية
     # ═══════════════════════════════════════
 
     async def step2_terms_dialog(self, page):
         log.info("🚀 step2: Terms Dialog")
 
+        # ✅ نستناو Dialog — 12 محاولة × 800ms
         has_dialog = False
-        for _ in range(8):
+        for _ in range(12):
             try:
                 has_dialog = await page.evaluate("""
                     () => {
-                        for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog')) {
+                        // 1. dialogs الرسمية
+                        for (const el of document.querySelectorAll(
+                            '[role="dialog"], [role="alertdialog"], .modal, md-dialog, ' +
+                            'mat-dialog-container, .cdk-overlay-pane, .mat-mdc-dialog-container'
+                        )) {
                             if (el.offsetParent === null) continue;
                             const t = (el.innerText || '').toLowerCase();
-                            if (t.includes('terms of service') || t.includes('i agree to')) return true;
+                            if (t.includes('terms of service') || t.includes('i agree') || t.includes('agree and continue')) {
+                                return true;
+                            }
                         }
+
+                        // 2. نص Terms + زر Agree
+                        const all = document.querySelectorAll('div, section, form');
+                        for (const el of all) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').toLowerCase();
+                            if ((t.includes('i agree to the google cloud platform') ||
+                                 (t.includes('terms of service') && t.includes('agree and continue'))) &&
+                                t.length < 2000) {
+                                return true;
+                            }
+                        }
+
+                        // 3. checkbox + زر Agree
+                        let has_checkbox = false;
+                        let has_agree_btn = false;
+                        for (const el of document.querySelectorAll('input[type="checkbox"], [role="checkbox"], mat-checkbox')) {
+                            if (el.offsetParent === null) continue;
+                            has_checkbox = true;
+                            break;
+                        }
+                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            if (t.includes('agree and continue') || t === 'agree') {
+                                has_agree_btn = true;
+                                break;
+                            }
+                        }
+                        if (has_checkbox && has_agree_btn) return true;
+
                         return false;
                     }
                 """)
                 if has_dialog:
+                    log.info("✅ لقينا Dialog")
                     break
-            except Exception:
-                pass
-            await page.wait_for_timeout(700)
+            except Exception as e:
+                log.warning(f"⚠️ فحص: {e}")
+            await page.wait_for_timeout(800)
 
         if not has_dialog:
             log.info("ℹ️ ما كاينش Dialog")
             return
 
-        log.info("📋 لقينا Dialog")
-
+        # ✅ checkbox — 7 selectors
         checkbox_info = None
         try:
             checkbox_info = await page.evaluate("""
                 () => {
-                    const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog');
-                    for (const dialog of dialogs) {
-                        if (dialog.offsetParent === null) continue;
-                        for (const el of dialog.querySelectorAll('input[type="checkbox"]')) {
+                    const selectors = [
+                        'input[type="checkbox"]',
+                        '[role="checkbox"]',
+                        'mat-checkbox',
+                        '.mat-checkbox',
+                        '.mat-mdc-checkbox',
+                        '.mdc-checkbox',
+                    ];
+
+                    for (const sel of selectors) {
+                        for (const el of document.querySelectorAll(sel)) {
                             if (el.offsetParent === null) continue;
                             const rect = el.getBoundingClientRect();
                             if (rect.width === 0 || rect.height === 0) continue;
-                            return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2), checked: el.checked };
-                        }
-                        for (const el of dialog.querySelectorAll('[role="checkbox"]')) {
-                            if (el.offsetParent === null) continue;
-                            const rect = el.getBoundingClientRect();
-                            if (rect.width === 0 || rect.height === 0) continue;
-                            return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2), checked: el.getAttribute('aria-checked') === 'true' };
-                        }
-                        for (const el of dialog.querySelectorAll('mat-checkbox')) {
-                            if (el.offsetParent === null) continue;
-                            const rect = el.getBoundingClientRect();
-                            if (rect.width === 0 || rect.height === 0) continue;
-                            return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2), checked: el.classList.contains('mat-checkbox-checked') };
+                            if (rect.width > 200) continue;
+
+                            const parent = el.closest('label, div, section, mat-checkbox, form') || el.parentElement;
+                            const txt = (parent?.innerText || '').toLowerCase();
+
+                            const is_checked = el.checked ||
+                                             el.getAttribute('aria-checked') === 'true' ||
+                                             el.classList.contains('mat-checkbox-checked') ||
+                                             el.classList.contains('mdc-checkbox--selected') ||
+                                             el.querySelector('input')?.checked === true;
+
+                            if (txt.includes('i agree') || txt.includes('terms of service') || txt.includes('agree to')) {
+                                return {
+                                    x: Math.round(rect.x + rect.width / 2),
+                                    y: Math.round(rect.y + rect.height / 2),
+                                    checked: is_checked,
+                                    tag: el.tagName,
+                                    cls: (el.className || '').toString().substring(0, 50),
+                                };
+                            }
                         }
                     }
+
+                    // fallback: أول checkbox
+                    for (const el of document.querySelectorAll('input[type="checkbox"], [role="checkbox"], mat-checkbox')) {
+                        if (el.offsetParent === null) continue;
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width === 0 || rect.height === 0) continue;
+                        if (rect.width > 200) continue;
+
+                        const is_checked = el.checked ||
+                                         el.getAttribute('aria-checked') === 'true' ||
+                                         el.classList.contains('mat-checkbox-checked');
+
+                        return {
+                            x: Math.round(rect.x + rect.width / 2),
+                            y: Math.round(rect.y + rect.height / 2),
+                            checked: is_checked,
+                            tag: el.tagName,
+                        };
+                    }
+
                     return null;
                 }
             """)
-        except Exception:
+        except Exception as e:
+            log.warning(f"⚠️ checkbox: {e}")
             checkbox_info = None
 
-        if checkbox_info and not checkbox_info['checked']:
-            log.info(f"📋 checkbox @({checkbox_info['x']},{checkbox_info['y']})")
-            try:
-                await page.mouse.move(checkbox_info['x'] - 30, checkbox_info['y'] - 30, steps=5)
-                await page.wait_for_timeout(150)
-                await page.mouse.move(checkbox_info['x'], checkbox_info['y'], steps=5)
-                await page.wait_for_timeout(200)
-                await page.mouse.down()
-                await page.wait_for_timeout(100)
-                await page.mouse.up()
-                log.info("✅ checkbox mouse")
-                await page.wait_for_timeout(1800)
+        if checkbox_info:
+            log.info(f"📋 checkbox [{checkbox_info.get('tag', '?')}] @({checkbox_info['x']},{checkbox_info['y']}) checked={checkbox_info['checked']}")
 
-                checked_now = await page.evaluate("""
-                    () => {
-                        const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog');
-                        for (const dialog of dialogs) {
-                            if (dialog.offsetParent === null) continue;
-                            for (const el of dialog.querySelectorAll('input[type="checkbox"]')) {
-                                if (el.offsetParent === null) continue;
-                                if (el.checked) return true;
-                            }
-                            for (const el of dialog.querySelectorAll('[role="checkbox"]')) {
-                                if (el.offsetParent === null) continue;
-                                if (el.getAttribute('aria-checked') === 'true') return true;
-                            }
-                            for (const el of dialog.querySelectorAll('mat-checkbox')) {
-                                if (el.offsetParent === null) continue;
-                                if (el.classList.contains('mat-checkbox-checked')) return true;
-                            }
-                        }
-                        return false;
-                    }
-                """)
+            if not checkbox_info['checked']:
+                try:
+                    await page.evaluate(f"""
+                        () => {{
+                            const el = document.elementFromPoint({checkbox_info['x']}, {checkbox_info['y']});
+                            if (el) el.scrollIntoView({{block: 'center', behavior: 'instant'}});
+                        }}
+                    """)
+                    await page.wait_for_timeout(400)
 
-                if not checked_now:
-                    await page.evaluate("""
+                    await page.mouse.move(checkbox_info['x'] - 20, checkbox_info['y'] - 20, steps=4)
+                    await page.wait_for_timeout(100)
+                    await page.mouse.move(checkbox_info['x'], checkbox_info['y'], steps=4)
+                    await page.wait_for_timeout(200)
+                    await page.mouse.down()
+                    await page.wait_for_timeout(100)
+                    await page.mouse.up()
+                    log.info("✅ mouse click checkbox")
+                    await page.wait_for_timeout(1500)
+
+                    checked_now = await page.evaluate("""
                         () => {
-                            const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog');
-                            for (const dialog of dialogs) {
-                                if (dialog.offsetParent === null) continue;
-                                for (const el of dialog.querySelectorAll('mat-checkbox, [role="checkbox"], input[type="checkbox"]')) {
-                                    if (el.offsetParent === null) continue;
-                                    try { el.click(); return; } catch (e) {}
+                            for (const el of document.querySelectorAll('input[type="checkbox"], [role="checkbox"], mat-checkbox')) {
+                                if (el.offsetParent === null) continue;
+                                if (el.checked ||
+                                    el.getAttribute('aria-checked') === 'true' ||
+                                    el.classList.contains('mat-checkbox-checked') ||
+                                    el.classList.contains('mdc-checkbox--selected') ||
+                                    el.querySelector('input')?.checked === true) {
+                                    return true;
                                 }
                             }
+                            return false;
                         }
                     """)
-                    await page.wait_for_timeout(1800)
-            except Exception as e:
-                log.warning(f"❌ checkbox: {e}")
 
+                    if not checked_now:
+                        log.warning("⚠️ mouse ما خدمش — JS click")
+                        clicked = await page.evaluate("""
+                            () => {
+                                for (const el of document.querySelectorAll('mat-checkbox, [role="checkbox"], input[type="checkbox"], label')) {
+                                    if (el.offsetParent === null) continue;
+                                    try {
+                                        el.click();
+                                        const inner = el.querySelector('input');
+                                        if (inner) inner.click();
+                                        return true;
+                                    } catch (e) {}
+                                }
+                                return false;
+                            }
+                        """)
+                        if clicked:
+                            log.info("✅ JS click")
+                            await page.wait_for_timeout(1500)
+                except Exception as e:
+                    log.warning(f"❌ checkbox: {e}")
+            else:
+                log.info("ℹ️ checkbox مفعّل من قبل")
+        else:
+            log.warning("⚠️ ما لقيناش checkbox")
+
+        # ✅ زر Agree
         agree_target = None
         for _ in range(8):
             try:
                 agree_target = await page.evaluate("""
                     () => {
                         const kws = ['agree and continue', 'i agree', 'accept', 'agree'];
-                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                        for (const el of document.querySelectorAll('button, [role="button"], input[type="submit"]')) {
                             if (el.offsetParent === null) continue;
                             const t = (el.innerText || el.value || '').trim().toLowerCase();
                             for (const kw of kws) {
@@ -274,7 +361,8 @@ class CloudConsole:
                                     const disabled = el.disabled ||
                                                     el.getAttribute('aria-disabled') === 'true' ||
                                                     el.classList.contains('disabled') ||
-                                                    el.classList.contains('mat-button-disabled');
+                                                    el.classList.contains('mat-button-disabled') ||
+                                                    el.classList.contains('mat-mdc-button-disabled');
                                     return {
                                         text: (el.innerText || el.value || '').trim(),
                                         x: Math.round(rect.x + rect.width / 2),
@@ -291,9 +379,10 @@ class CloudConsole:
                     break
             except Exception:
                 pass
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(800)
 
         if not agree_target:
+            log.warning("⚠️ ما لقيناش Agree")
             return
 
         log.info(f"🎯 Agree: '{agree_target['text']}' dis={agree_target['disabled']}")
@@ -302,19 +391,15 @@ class CloudConsole:
             try:
                 await page.evaluate("""
                     () => {
-                        const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog');
-                        for (const dialog of dialogs) {
-                            if (dialog.offsetParent === null) continue;
-                            for (const el of dialog.querySelectorAll('mat-checkbox')) {
-                                const rect = el.getBoundingClientRect();
-                                if (rect.width === 0 || rect.height === 0) continue;
-                                const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-                                el.dispatchEvent(evt);
-                            }
+                        for (const el of document.querySelectorAll('mat-checkbox, [role="checkbox"]')) {
+                            const rect = el.getBoundingClientRect();
+                            if (rect.width === 0 || rect.height === 0) continue;
+                            const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                            el.dispatchEvent(evt);
                         }
                     }
                 """)
-                await page.wait_for_timeout(1800)
+                await page.wait_for_timeout(1500)
             except Exception:
                 pass
 
@@ -325,32 +410,34 @@ class CloudConsole:
                     if (el) el.scrollIntoView({{block: 'center', behavior: 'instant'}});
                 }}
             """)
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(400)
 
-            await page.mouse.move(agree_target['x'] - 80, agree_target['y'] - 40, steps=6)
-            await page.wait_for_timeout(150)
-            await page.mouse.move(agree_target['x'], agree_target['y'], steps=5)
-            await page.wait_for_timeout(200)
-            await page.mouse.down()
+            await page.mouse.move(agree_target['x'] - 60, agree_target['y'] - 30, steps=4)
             await page.wait_for_timeout(100)
+            await page.mouse.move(agree_target['x'], agree_target['y'], steps=4)
+            await page.wait_for_timeout(150)
+            await page.mouse.down()
+            await page.wait_for_timeout(80)
             await page.mouse.up()
+            log.info("✅ mouse click Agree")
         except Exception:
             pass
 
-        await page.wait_for_timeout(1200)
+        await page.wait_for_timeout(1500)
 
         still_open = await page.evaluate("""
             () => {
-                for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog')) {
+                for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog, mat-dialog-container, .cdk-overlay-pane')) {
                     if (el.offsetParent === null) continue;
                     const t = (el.innerText || '').toLowerCase();
-                    if (t.includes('terms of service') || t.includes('i agree')) return true;
+                    if (t.includes('terms of service') || t.includes('i agree to the google cloud platform')) return true;
                 }
                 return false;
             }
         """)
 
         if still_open:
+            log.warning("⚠️ مازال مفتوح — JS click")
             try:
                 await page.evaluate("""
                     () => {
@@ -371,41 +458,41 @@ class CloudConsole:
                         }
                     }
                 """)
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(1500)
             except Exception:
                 pass
 
-        for i in range(12):
-            await page.wait_for_timeout(1200)
+        for i in range(10):
+            await page.wait_for_timeout(1000)
             try:
                 gone = await page.evaluate("""
                     () => {
-                        for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog')) {
+                        for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog, mat-dialog-container, .cdk-overlay-pane')) {
                             if (el.offsetParent === null) continue;
                             const t = (el.innerText || '').toLowerCase();
-                            if (t.includes('terms of service') || t.includes('i agree')) return false;
+                            if (t.includes('terms of service') || t.includes('i agree to the google cloud platform')) return false;
                         }
                         return true;
                     }
                 """)
                 if gone:
-                    log.info(f"✅ Dialog اختفى ~{(i+1)*1.2}s")
+                    log.info(f"✅ Dialog اختفى ~{(i+1)*1}s")
                     break
             except Exception:
                 pass
 
     # ═══════════════════════════════════════
-    # STEP 3: Enable API
+    # STEP 3
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
         try:
             dialog_open = await page.evaluate("""
                 () => {
-                    for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog')) {
+                    for (const el of document.querySelectorAll('[role="dialog"], [role="alertdialog"], .modal, md-dialog, mat-dialog-container, .cdk-overlay-pane')) {
                         if (el.offsetParent === null) continue;
                         const t = (el.innerText || '').toLowerCase();
-                        if (t.includes('terms of service') || t.includes('i agree')) return true;
+                        if (t.includes('terms of service') || t.includes('i agree to the google cloud platform')) return true;
                     }
                     return false;
                 }
@@ -456,7 +543,7 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4: Create Cloud Run
+    # STEP 4
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -473,7 +560,6 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(4000)
 
-        # ✅ نلقاو حقل Container Image URL — 4 استراتيجيات
         image_found = False
         for attempt in range(15):
             try:
@@ -482,7 +568,6 @@ class CloudConsole:
                     if await label.count() > 0 and await label.is_visible():
                         await label.click()
                         image_found = True
-                        log.info("✅ get_by_text")
                         break
                 except Exception:
                     pass
@@ -492,7 +577,6 @@ class CloudConsole:
                     if await inp.count() > 0 and await inp.is_visible():
                         await inp.click()
                         image_found = True
-                        log.info("✅ input[aria-label]")
                         break
                 except Exception:
                     pass
@@ -502,7 +586,6 @@ class CloudConsole:
                     if await el.count() > 0 and await el.is_visible():
                         await el.click()
                         image_found = True
-                        log.info("✅ text regex")
                         break
                 except Exception:
                     pass
@@ -522,7 +605,6 @@ class CloudConsole:
                     """)
                     if clicked:
                         image_found = True
-                        log.info("✅ JS click")
                         break
                 except Exception:
                     pass
@@ -536,7 +618,6 @@ class CloudConsole:
                 inp = page.locator('input[type="text"]').first
                 if await inp.count() > 0:
                     await inp.click()
-                    log.info("ℹ️ أول input")
                 else:
                     raise RuntimeError("ما لقيناش حقل Image")
             except Exception as e:
@@ -575,7 +656,7 @@ class CloudConsole:
             raise RuntimeError(f"فشل الإعدادات: {str(e)}")
 
     # ═══════════════════════════════════════
-    # STEP 5: Get URL
+    # STEP 5
     # ═══════════════════════════════════════
 
     async def step5_get_deployed_url(self, page):
