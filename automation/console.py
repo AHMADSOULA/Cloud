@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — صامت (بلا تقارير، بلا تصوير)
+كل خطوات Google Cloud Console — صامت + Service name فريد
 """
 import asyncio
 from playwright.async_api import expect
@@ -15,8 +15,11 @@ class CloudConsole:
         self.sender = sender
         self.user_tag = user_tag or "@user"
 
+    async def _shot(self, page, caption: str = ""):
+        return
+
     # ═══════════════════════════════════════
-    # STEP 1: TOS الأولى
+    # STEP 1
     # ═══════════════════════════════════════
 
     async def step1_welcome_screen(self, page):
@@ -73,8 +76,6 @@ class CloudConsole:
 
         if not target:
             return
-
-        log.info(f"🎯 '{target['text']}' @({target['x']},{target['y']})")
 
         try:
             await page.evaluate(f"""
@@ -143,7 +144,7 @@ class CloudConsole:
                 pass
 
     # ═══════════════════════════════════════
-    # STEP 2: Terms Dialog
+    # STEP 2
     # ═══════════════════════════════════════
 
     async def step2_terms_dialog(self, page):
@@ -395,7 +396,7 @@ class CloudConsole:
                 pass
 
     # ═══════════════════════════════════════
-    # STEP 3: Enable API
+    # STEP 3
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
@@ -456,10 +457,13 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4: Create Cloud Run
+    # STEP 4 — مع Service name فريد
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
+        import random
+        import string
+
         run_url = (
             f"https://console.cloud.google.com/run/create"
             f"?project={project_id}&authuser={authuser}"
@@ -473,6 +477,7 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(4000)
 
+        # حقل Container Image URL
         image_found = False
         for attempt in range(15):
             try:
@@ -550,6 +555,49 @@ class CloudConsole:
 
         await page.wait_for_timeout(2000)
 
+        # ✅ Service name فريد
+        try:
+            service_name_field = None
+            for sel in [
+                'input[aria-label*="Service name" i]',
+                'input[formcontrolname*="serviceName" i]',
+                'input[formcontrolname*="name" i]',
+                'input[aria-label*="Name" i]',
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0 and await el.is_visible():
+                        service_name_field = el
+                        log.info(f"✅ حقل Service name")
+                        break
+                except Exception:
+                    continue
+
+            if service_name_field:
+                try:
+                    current_name = await service_name_field.input_value()
+                except Exception:
+                    current_name = ""
+
+                log.info(f"📝 Service name الحالي: '{current_name}'")
+
+                # ✅ نزيدو حرف عشوائي
+                suffix = random.choice(string.ascii_lowercase)
+                new_name = f"{current_name}-{suffix}" if current_name else f"service-{suffix}"
+
+                await service_name_field.click()
+                await page.wait_for_timeout(200)
+                await service_name_field.fill("")
+                await page.wait_for_timeout(200)
+                await service_name_field.fill(new_name)
+                await page.wait_for_timeout(400)
+                log.info(f"✅ Service name جديد: '{new_name}'")
+            else:
+                log.warning("⚠️ ما لقيناش حقل Service name")
+        except Exception as e:
+            log.warning(f"⚠️ Service name: {e}")
+
+        # إعدادات + Create
         try:
             try:
                 await page.get_by_role("radio", name="Allow public access").click(timeout=10000)
@@ -574,11 +622,13 @@ class CloudConsole:
             raise RuntimeError(f"فشل الإعدادات: {str(e)}")
 
     # ═══════════════════════════════════════
-    # STEP 5: Get URL
+    # STEP 5 — انتظار أطول
     # ═══════════════════════════════════════
 
     async def step5_get_deployed_url(self, page):
-        for i in range(60):
+        log.info("⏳ step5: نستناو run.app...")
+
+        for i in range(240):  # 240 × 2.5 = 600s = 10 دقايق
             try:
                 url = await page.evaluate("""
                     () => {
@@ -587,14 +637,6 @@ class CloudConsole:
                             const href = a.href || '';
                             if (href.includes('.run.app')) return href.split('?')[0].split('#')[0];
                         }
-                        return null;
-                    }
-                """)
-                if url:
-                    return url
-
-                url = await page.evaluate("""
-                    () => {
                         const body = document.body.innerText || '';
                         const m = body.match(/https:\\/\\/[a-zA-Z0-9\\-]+\\.run\\.app/);
                         if (m) return m[0];
@@ -602,6 +644,7 @@ class CloudConsole:
                     }
                 """)
                 if url:
+                    log.info(f"✅ لقيناه: {url}")
                     return url
             except Exception:
                 pass
@@ -609,10 +652,11 @@ class CloudConsole:
             await page.wait_for_timeout(2500)
 
             if (i + 1) % 10 == 0:
+                log.info(f"⏳ مازال نستناو... ({(i+1)*2.5}s)")
                 try:
                     await page.reload(wait_until="domcontentloaded", timeout=30000)
                     await page.wait_for_timeout(2500)
                 except Exception:
                     pass
 
-        raise RuntimeError("ما لقيناش رابط run.app")
+        raise RuntimeError("ما لقيناش رابط run.app بعد 10 دقايق")
