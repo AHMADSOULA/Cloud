@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — نسخة بسيطة (كيما كانت تمشي)
+كل خطوات Google Cloud Console — مع تقارير + تصوير
 """
 import asyncio
 from playwright.async_api import expect
@@ -15,8 +15,40 @@ class CloudConsole:
         self.sender = sender
         self.user_tag = user_tag or "@user"
 
+    # ═══════════════════════════════════════
+    # 📸 أداة التصوير + الرسائل
+    # ═══════════════════════════════════════
+
     async def _shot(self, page, caption: str = ""):
-        return
+        if not self.sender:
+            return
+        try:
+            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
+            await page.screenshot(path=path, full_page=False, timeout=15000)
+            with open(path, "rb") as f:
+                try:
+                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
+                    log.info(f"📸 {caption}")
+                except Exception as e:
+                    log.warning(f"⚠️ reply_photo: {e}")
+            import os
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        except Exception as e:
+            log.warning(f"⚠️ _shot: {e}")
+
+    async def _report(self, num, text, ok=False):
+        if not self.sender:
+            return
+        try:
+            if ok:
+                await self.sender.reply_text(f"[{self.user_tag}] • {num} ✅ {text}")
+            else:
+                await self.sender.reply_text(f"[{self.user_tag}] • {num}) {text}")
+        except Exception as e:
+            log.warning(f"⚠️ _report: {e}")
 
     # ═══════════════════════════════════════
     # STEP 1
@@ -26,7 +58,9 @@ class CloudConsole:
         log.info("🚀 step1: Welcome / TOS")
 
         await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_timeout(1500)
+        await page.wait_for_timeout(2000)
+
+        await self._shot(page, "3️⃣ صفحة Welcome")
 
         try:
             is_tos = await page.evaluate("""
@@ -77,6 +111,8 @@ class CloudConsole:
         if not target:
             return
 
+        log.info(f"🎯 '{target['text']}'")
+
         try:
             await page.evaluate(f"""
                 () => {{
@@ -118,7 +154,7 @@ class CloudConsole:
             await page.mouse.up()
             log.info("✅ mouse click")
         except Exception as e:
-            log.warning(f"❌ mouse فشل: {e}")
+            log.warning(f"❌ mouse: {e}")
             try:
                 await page.get_by_role("button", name="I understand").click(timeout=5000)
             except Exception:
@@ -143,8 +179,10 @@ class CloudConsole:
             except Exception:
                 pass
 
+        await self._shot(page, "✅ تم قبول TOS الأولى")
+
     # ═══════════════════════════════════════
-    # STEP 2 — النسخة البسيطة
+    # STEP 2
     # ═══════════════════════════════════════
 
     async def step2_terms_dialog(self, page):
@@ -174,6 +212,7 @@ class CloudConsole:
             return
 
         log.info("📋 لقينا Dialog")
+        await self._shot(page, "📋 Terms Dialog")
 
         checkbox_info = None
         try:
@@ -258,6 +297,8 @@ class CloudConsole:
                     await page.wait_for_timeout(1800)
             except Exception as e:
                 log.warning(f"❌ checkbox: {e}")
+
+        await self._shot(page, "✅ checkbox مفعّل")
 
         agree_target = None
         for _ in range(8):
@@ -395,8 +436,10 @@ class CloudConsole:
             except Exception:
                 pass
 
+        await self._shot(page, "✅ تم قبول Terms Dialog")
+
     # ═══════════════════════════════════════
-    # STEP 3 — النسخة البسيطة
+    # STEP 3
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
@@ -433,6 +476,8 @@ class CloudConsole:
         await page.goto(api_url, wait_until="domcontentloaded")
         await page.wait_for_timeout(2500)
 
+        await self._shot(page, "☁️ صفحة تفعيل Cloud Run API")
+
         enable_btn = page.get_by_role("button", name="Enable")
         manage_btn = page.get_by_role("button", name="Manage")
         disable_btn = page.get_by_text("Disable API")
@@ -445,6 +490,7 @@ class CloudConsole:
                         await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=120000)
                     except Exception:
                         pass
+                    await self._shot(page, "✅ Cloud Run API مفعّل")
                     return
 
                 if await manage_btn.count() > 0 and await manage_btn.is_visible():
@@ -457,7 +503,7 @@ class CloudConsole:
         raise RuntimeError("ما لقيناش زر Enable ولا Manage")
 
     # ═══════════════════════════════════════
-    # STEP 4 — بلا Service name randomization
+    # STEP 4
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -474,6 +520,8 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(4000)
 
+        await self._shot(page, "🚀 صفحة إنشاء Cloud Run")
+
         image_found = False
         for attempt in range(15):
             try:
@@ -482,7 +530,6 @@ class CloudConsole:
                     if await label.count() > 0 and await label.is_visible():
                         await label.click()
                         image_found = True
-                        log.info("✅ get_by_text")
                         break
                 except Exception:
                     pass
@@ -492,7 +539,6 @@ class CloudConsole:
                     if await inp.count() > 0 and await inp.is_visible():
                         await inp.click()
                         image_found = True
-                        log.info("✅ input[aria-label]")
                         break
                 except Exception:
                     pass
@@ -502,7 +548,6 @@ class CloudConsole:
                     if await el.count() > 0 and await el.is_visible():
                         await el.click()
                         image_found = True
-                        log.info("✅ text regex")
                         break
                 except Exception:
                     pass
@@ -522,7 +567,6 @@ class CloudConsole:
                     """)
                     if clicked:
                         image_found = True
-                        log.info("✅ JS click")
                         break
                 except Exception:
                     pass
@@ -536,7 +580,6 @@ class CloudConsole:
                 inp = page.locator('input[type="text"]').first
                 if await inp.count() > 0:
                     await inp.click()
-                    log.info("ℹ️ أول input")
                 else:
                     raise RuntimeError("ما لقيناش حقل Image")
             except Exception as e:
@@ -546,6 +589,7 @@ class CloudConsole:
             await page.wait_for_timeout(400)
             await page.keyboard.type(image, delay=40)
             log.info("✅ رابط الحاوية")
+            await self._shot(page, "📦 تم إدخال رابط الحاوية")
         except Exception as e:
             raise RuntimeError(f"فشل كتابة الرابط: {str(e)}")
 
@@ -568,9 +612,14 @@ class CloudConsole:
             await page.keyboard.press("End")
             await page.wait_for_timeout(600)
 
+            await self._shot(page, "⚙️ الإعدادات جاهزة")
+
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
             log.info("✅ Create")
+
+            await page.wait_for_timeout(2000)
+            await self._shot(page, "▶️ تم الضغط على Create")
         except Exception as e:
             raise RuntimeError(f"فشل الإعدادات: {str(e)}")
 
@@ -592,6 +641,7 @@ class CloudConsole:
                     }
                 """)
                 if url:
+                    await self._shot(page, "🎯 Cloud Run جاهز")
                     return url
 
                 url = await page.evaluate("""
@@ -603,6 +653,7 @@ class CloudConsole:
                     }
                 """)
                 if url:
+                    await self._shot(page, "🎯 Cloud Run جاهز")
                     return url
             except Exception:
                 pass
