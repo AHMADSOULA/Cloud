@@ -161,33 +161,23 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# ✅ فحص نوع الرابط
+# فحص نوع الرابط
 # ═══════════════════════════════════════════
 
 def is_full_sso_url(url: str) -> bool:
-    """
-    ✅ SSO كامل = ما تطلبش كلمة سر.
-    العلامات:
-      - skills.google/google_sso
-      - فيه token=
-      - فيه Password=
-    """
+    """SSO كامل = ما تطلبش كلمة سر"""
     u = (url or "").lower()
-
     if "skills.google/google_sso" in u:
         return True
     if "token=" in u:
         return True
     if "password=" in u:
         return True
-
     return False
 
 
 def is_direct_addsession_url(url: str) -> bool:
-    """
-    ✅ AddSession مباشر = تطلب كلمة سر.
-    """
+    """AddSession مباشر = تطلب كلمة سر"""
     u = (url or "").lower()
     if "accounts.google.com/addsession" in u and "skills.google" not in u:
         return True
@@ -207,7 +197,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sso_url = urls[0]
     user = update.effective_user
 
-    # ✅ لازم يكون رابط Google Skills
     if "skills.google" not in sso_url and "qwiklabs" not in sso_url and "accounts.google.com" not in sso_url:
         await update.message.reply_text("⚠️ الرابط لا يبدو من Google Skills.")
         return
@@ -215,12 +204,10 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
 
     log.info(f"🔗 URL: {sso_url[:150]}")
-    log.info(f"🔍 is_full_sso={is_full_sso_url(sso_url)}")
-    log.info(f"🔍 is_direct_addsession={is_direct_addsession_url(sso_url)}")
 
     # ✅ 1. SSO كامل → ما تطلبش كلمة سر
     if is_full_sso_url(sso_url):
-        log.info("✅ رابط SSO كامل — بلا كلمة سر")
+        log.info("✅ SSO كامل — بلا كلمة سر")
         num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
         await update.message.reply_text(
             f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
@@ -247,19 +234,16 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         else:
-            # ما لقيناش إيميل، نطلبو الرابط كامل
             await update.message.reply_text(
                 "⚠️ ما قدرناش نستخرجو الإيميل من الرابط.\n"
                 "أرسل الرابط الكامل (skills.google/google_sso?...)"
             )
             return
 
-    # ✅ 3. رابط آخر → نكملو عادي
-    log.info("ℹ️ رابط آخر — نكملو")
+    # ✅ 3. رابط آخر → نكملو
+    log.info("ℹ️ رابط آخر")
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-    await update.message.reply_text(
-        f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن."
-    )
+    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
@@ -290,7 +274,6 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.clear_session(user.id)
 
-    # ✅ نزيدو كلمة السر للرابط
     if "Password=" not in sso_url:
         sep = "&" if "?" in sso_url else "?"
         sso_url = f"{sso_url}{sep}Password={password}"
@@ -334,10 +317,14 @@ async def process_queue(chat_id, user_id, context):
                 log.info(f"✅ Domain: {domain}")
 
                 # ✅ 3 ملفات dark
+                log.info(f"🔵 نبعثو {len(DARK_FILES)} ملفات dark")
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
+                        log.info(f"🔵 [{idx}/3] {dark['name']}")
+
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
+                            log.error(f"❌ [{idx}/3] build فشل")
                             continue
 
                         safe_domain = "".join(
