@@ -398,10 +398,11 @@ class CloudConsole:
                 pass
 
     # ═══════════════════════════════════════
-    # STEP 3
+    # STEP 3 — نسخة جديدة مع فحص Sign in
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
+        # ✅ نتحققو واش Dialog مازال مفتوح
         try:
             dialog_open = await page.evaluate("""
                 () => {
@@ -433,23 +434,51 @@ class CloudConsole:
             f"run.googleapis.com?project={project_id}&authuser={authuser}"
         )
         await page.goto(api_url, wait_until="domcontentloaded")
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(3000)
+
+        # ✅ نتحققو واش في صفحة Sign in
+        try:
+            current_url = page.url.lower()
+            if "accounts.google.com" in current_url:
+                log.warning("⚠️ رجعنا لـ sign in")
+                raise RuntimeError("رجعنا لـ sign in")
+        except Exception as e:
+            if "sign in" in str(e):
+                raise
 
         enable_btn = page.get_by_role("button", name="Enable")
         manage_btn = page.get_by_role("button", name="Manage")
         disable_btn = page.get_by_text("Disable API")
 
-        for attempt in range(30):
+        for attempt in range(20):
             try:
                 if await enable_btn.count() > 0 and await enable_btn.is_visible():
                     await enable_btn.click()
                     try:
-                        await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=120000)
+                        await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=90000)
                     except Exception:
                         pass
                     return
 
                 if await manage_btn.count() > 0 and await manage_btn.is_visible():
+                    return
+
+                # JS fallback
+                clicked = await page.evaluate("""
+                    () => {
+                        const kws = ['enable', 'manage'];
+                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            if (t === 'enable' || t === 'manage') {
+                                try { el.click(); return t; } catch (e) {}
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                if clicked:
+                    await page.wait_for_timeout(2000)
                     return
             except Exception:
                 pass
@@ -476,7 +505,6 @@ class CloudConsole:
             pass
         await page.wait_for_timeout(3500)
 
-        # حقل Image
         image_found = False
         for attempt in range(12):
             try:
@@ -609,7 +637,6 @@ class CloudConsole:
         except Exception as e:
             log.warning(f"⚠️ Service name: {e}", exc_info=True)
 
-        # إعدادات
         try:
             try:
                 await page.get_by_role("radio", name="Allow public access").click(timeout=8000)
@@ -629,7 +656,6 @@ class CloudConsole:
         except Exception as e:
             log.warning(f"⚠️ إعدادات: {e}")
 
-        # Create
         try:
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
