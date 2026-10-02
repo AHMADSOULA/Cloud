@@ -76,29 +76,24 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H_🇺🇸",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtMTAyNzk3NzA0Nzg4LnVzLWNlbnRyYWwxLnJ1bi5hcHAifSwiaW5qZWN0Q29uZmlnIjp7ImVuYWJsZWQiOnRydWUsIm1vZGUiOiJQUk9YWSIsInByb3h5SG9zdCI6IjE1Ny4yNDAuOS4zOSIsInBheWxvYWQiOiJDT05ORUNUIFtob3N0XTpbcG9ydF0gSFRUUC8xLjFbY3JsZl14LWNvbm5lY3RlZC10bzogMzQuMTQzLjcyLjJbY3JsZl1wcm94eS1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZdY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXXVzZXItYWdlbnQ6IEZBQVYvMC4wIFtjcmxmXXgtaW9yZy1ic2lkOiBAQU0yX0QzW2NybGZdW2NybGZdIn19fQ==",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtMTAyNzk3NzA0Nzg4LnVzLWNlbnRyYWwxLnJ1bi5hcHAifSwiaW5qZWN0Q29uZmlnIjp7ImVuYWJsZWQiOnRydWUsIm1vZGUiOiJQUk9YWSIsInByb3h5SG9zdCI6IjE1Ny4yNDAuOS4zOSIsInBheWxvYWQiOiJDT05ORUNUIFtob3N0XTpbcG9ydF0gSFRUUC8xLjFbY3JsZl14LWNvbm5lY3RlZC10bzogMzQuMTQzLjcyLjJbY3JsZl1wcm94eS1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZdY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXXVzZXItYWdlbnQ6IEZCQVYvMC4wIFtjcmxmXXgtaW9yZy1ic2lkOiBAQU0yX0QzW2NybGZdW2NybGZdIn19fQ==",
     },
 ]
 
 
 def _b64_pad(s: str) -> str:
-    """يزيد padding إذا ناقص"""
     s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    """يفك تشفير darktunnel، يبدل wsHeaderHost، ويعيد التشفير"""
     try:
-        # ✅ نحيّد البرفيكس
         raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
         raw_b64 = _b64_pad(raw_b64)
 
-        # ✅ decode
         decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
         data = json.loads(decoded)
 
-        # ✅ نمشيو في كل dict ونبدلو wsHeaderHost
         stack = [data]
         while stack:
             cur = stack.pop()
@@ -109,196 +104,25 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
             elif isinstance(cur, list):
                 stack.extend(v for v in cur if isinstance(v, (dict, list)))
 
-        # ✅ نعاودو نشفرو
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         new_b64 = base64.b64encode(raw).decode("utf-8")
         return "darktunnel://" + new_b64
 
     except Exception as e:
         log.error(f"❌ build_darktunnel فشل: {e}")
-        # إذا فشل، نرجعو الأصلي
         return base_uri
 
 
 # ═══════════════════════════════════════════
-# الأوامر
+# Countdown — يحدّث رسالة وحدة
 # ═══════════════════════════════════════════
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await db.register_user(user.id, user.username or user.first_name)
-    await update.message.reply_text(
-        messages.WELCOME, parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu()
-    )
-
-
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(messages.WELCOME, parse_mode=ParseMode.MARKDOWN)
-
-
-async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    jobs = await db.get_user_jobs(user.id, limit=5)
-    if not jobs:
-        await update.message.reply_text("📭 لا توجد مهام سابقة.")
-        return
-    lines = []
-    for jid, status, created in jobs:
-        emoji = {"pending": "⏳", "done": "✅", "failed": "❌", "running": "🔄"}.get(status, "❔")
-        lines.append(f"• `#{jid}` — {emoji} {status} — {created}")
-    await update.message.reply_text(
-        f"📊 *آخر {len(jobs)} مهام:*\n\n" + "\n".join(lines),
-        parse_mode=ParseMode.MARKDOWN,
-    )
-
-
-async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await db.clear_session(user.id)
-    b = context.bot_data.pop(f"browser_{user.id}", None)
-    if b:
-        try:
-            await b.close()
-        except Exception:
-            pass
-    await update.message.reply_text("🚫 تم الإلغاء.")
-
-
-# ═══════════════════════════════════════════
-# استقبال SSO
-# ═══════════════════════════════════════════
-
-async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text or ""
-    urls = extract_urls(text)
-    if not urls:
-        await update.message.reply_text(messages.NO_URL)
-        return
-    sso_url = urls[0]
-    user = update.effective_user
-
-    if "skills.google" not in sso_url and "qwiklabs" not in sso_url:
-        await update.message.reply_text("⚠️ الرابط لا يبدو من Google Skills.")
-        return
-
-    user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
-
-    num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-
-    await update.message.reply_text(
-        f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
-        f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
-    )
-
-    asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
-
-
-# ═══════════════════════════════════════════
-# معالجة الطابور
-# ═══════════════════════════════════════════
-
-async def process_queue(chat_id, user_id, context):
-    async with asyncio.Lock():
-        item = await queue.get_next()
-        if not item:
-            return
-
-        job = item
-        try:
-            browser = StealthBrowser()
-            ctx = await browser.start()
-
-            try:
-                result = await run_sso_flow(
-                    ctx,
-                    job["sso_url"],
-                    image=config.DEFAULT_IMAGE,
-                    sender=None,
-                    user_tag=job["user_tag"],
-                )
-
-                domain = result["domain"]
-                final_url = result["final_url"]
-
-                # ✅ رسالة النتيجة
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=(
-                        f"✅ **𝙃𝙚𝙧𝙚 𝙮𝙤𝙪 𝙜𝙤 𝙗𝙧𝙤**\n\n"
-                        f"🌐 **Domain:**\n`{domain}`\n\n"
-                        f"🔗 **URL:**\n`{final_url}`"
-                    ),
-                    parse_mode=ParseMode.MARKDOWN,
-                )
-
-                log.info(f"🔵 بدء إرسال {len(DARK_FILES)} ملفات dark")
-
-                # ✅ 3 ملفات darktunnel
-                for idx, dark in enumerate(DARK_FILES, 1):
-                    try:
-                        log.info(f"🔵 [{idx}/3] {dark['name']}")
-
-                        new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
-                        log.info(f"🔵 URI length: {len(new_uri)}")
-
-                        safe_domain = "".join(
-                            c for c in domain.lower()
-                            if c.isalnum() or c in ".-_"
-                        )[:40]
-
-                        filename = f"{dark['name']} - {safe_domain}.dark"
-
-                        # ✅ BytesIO مع seek(0)
-                        bio = io.BytesIO(new_uri.encode("utf-8"))
-                        bio.name = filename
-                        bio.seek(0)
-
-                        await context.bot.send_document(
-                            chat_id=chat_id,
-                            document=bio,
-                            filename=filename,
-                            caption=f"✅ {dark['name']}\n`{domain}`",
-                        )
-                        log.info(f"✅ [{idx}/3] {dark['name']} sent")
-
-                    except Exception as e:
-                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
-                        try:
-                            await context.bot.send_message(
-                                chat_id=chat_id,
-                                text=f"❌ فشل ملف {dark['name']}:\n{str(e)[:300]}",
-                            )
-                        except Exception:
-                            pass
-
-                log.info("✅ كل الملفات dark تم إرسالها")
-
-            finally:
-                try:
-                    await browser.close()
-                except Exception:
-                    pass
-
-        except Exception as e:
-            log.exception("فشل تنفيذ المهمة")
-            try:
-                await context.bot.send_message(chat_id=chat_id, text=f"❌ فشل\n\n{str(e)[:400]}")
-            except Exception:
-                pass
-
-        finally:
-            await queue.finish()
-
-            if queue.queue_size() > 0:
-                asyncio.create_task(process_queue(chat_id, user_id, context))
-
-
-# ═══════════════════════════════════════════
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "status":
-        await status_cmd(update, context)
-    elif query.data == "help":
-        await query.message.reply_text(messages.WELCOME, parse_mode=ParseMode.MARKDOWN)
+async def run_countdown(msg, seconds: int, domain_holder: dict):
+    """
+    يحدّث رسالة وحدة كل 5 ثواني بالوقت المتبقي.
+    يتوقف إذا domain_holder['done'] = True
+    """
+    remaining = seconds
+    while remaining > 0:
+        # إذا خلصت العملية
+        if domain_holder.get("done
