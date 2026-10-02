@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — صفحة وحدة + تمرير sender
+تنسيق العملية — صامت
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -38,14 +38,14 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     log.info(f"🚀 SSO flow — project={project_id}")
 
-    console = CloudConsole(context, sender=sender, user_tag=user_tag)
+    console = CloudConsole(context, sender=None, user_tag=user_tag)
 
     # صفحة 1
     page = await context.new_page()
     try:
         await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
         await console.step1_welcome_screen(page)
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(1500)
         await console.step2_terms_dialog(page)
 
         try:
