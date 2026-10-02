@@ -17,7 +17,6 @@ from automation.sso_flow import run_sso_flow
 
 log = get_logger("Handlers")
 
-
 # ═══════════════════════════════════════════
 # طابور
 # ═══════════════════════════════════════════
@@ -63,79 +62,6 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# قوالب JSON + VLESS
-# ═══════════════════════════════════════════
-
-VLESS_TEMPLATE = (
-    "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
-    "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
-    "&host={domain}&type=ws&sni={domain}#%40AHMAD3214"
-)
-
-JSON_TEMPLATE = r'''{
-  "dns": {
-    "fallbackStrategy": "disabledIfAnyMatch",
-    "hosts": {},
-    "servers": [
-      {
-        "address": "tcp://8.8.8.8",
-        "fakedns": [
-          {"ipPool": "198.18.0.0/15", "poolSize": 65535}
-        ],
-        "queryStrategy": "UseIPv4"
-      }
-    ]
-  },
-  "inbounds": [
-    {"listen": "0.0.0.0", "port": "1080", "protocol": "dokodemo-door",
-     "settings": {"network": "tcp,udp", "followRedirect": true}, "tag": "tun-inbound"},
-    {"listen": "127.0.0.1", "port": "10808", "protocol": "socks",
-     "settings": {"auth": "noauth", "udp": true}, "tag": "socks-inbound"}
-  ],
-  "log": {"loglevel": "warning"},
-  "outbounds": [
-    {
-      "mux": {"enabled": false},
-      "protocol": "vless",
-      "proxySettings": {"tag": "AhMed", "transportLayer": true},
-      "settings": {
-        "vnext": [{
-          "address": "yt3.ggpht.com", "port": 443,
-          "users": [{"encryption": "none", "flow": "", "id": "aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000", "level": 8}]
-        }]
-      },
-      "streamSettings": {
-        "network": "ws", "security": "tls",
-        "tlsSettings": {"allowInsecure": true, "serverName": "yt3.ggpht.com"},
-        "wsSettings": {"headers": {"Host": "__DOMAIN__"}, "path": "/Telegram/@AM2_D3/@AHMAD3214"}
-      },
-      "tag": "VLESS"
-    },
-    {
-      "domainStrategy": "AsIs",
-      "protocol": "http",
-      "settings": {
-        "servers": [{"address": "57.144.120.4", "port": 8080}],
-        "headers": {"Host": "yt3.ggpht.com:443", "Proxy-Connection": "keep-alive",
-                    "User-Agent": "FBAV/0.0", "X-iorg-bsid": "@AM2_D3"}
-      },
-      "tag": "@AM2_D3"
-    },
-    {"protocol": "freedom", "tag": "direct"},
-    {"protocol": "blackhole", "tag": "block"}
-  ],
-  "policy": {"levels": {"8": {"connIdle": 300, "downlinkOnly": 1, "handshake": 4, "uplinkOnly": 1}}},
-  "routing": {
-    "domainStrategy": "AsIs",
-    "rules": [
-      {"outboundTag": "direct", "protocol": ["dns"], "type": "field"},
-      {"inboundTag": ["tun-inbound", "socks-inbound"], "outboundTag": "VLESS", "type": "field"}
-    ]
-  }
-}'''
-
-
-# ═══════════════════════════════════════════
 # 3 ملفات DarkTunnel
 # ═══════════════════════════════════════════
 
@@ -156,33 +82,25 @@ DARK_FILES = [
 
 
 def _b64_pad(s: str) -> str:
-    s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    try:
-        raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
-        raw_b64 = _b64_pad(raw_b64)
-        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
-        data = json.loads(decoded)
+    b64 = _b64_pad(base_uri.split("darktunnel://", 1)[1].strip())
+    data = json.loads(base64.b64decode(b64.encode("utf-8")).decode("utf-8"))
 
-        stack = [data]
-        while stack:
-            cur = stack.pop()
-            if isinstance(cur, dict):
-                if "wsHeaderHost" in cur:
-                    cur["wsHeaderHost"] = new_host
-                stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
-            elif isinstance(cur, list):
-                stack.extend(v for v in cur if isinstance(v, (dict, list)))
+    stack = [data]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            if "wsHeaderHost" in cur:
+                cur["wsHeaderHost"] = new_host
+            stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
+        elif isinstance(cur, list):
+            stack.extend(v for v in cur if isinstance(v, (dict, list)))
 
-        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        new_b64 = base64.b64encode(raw).decode("utf-8")
-        return "darktunnel://" + new_b64
-    except Exception as e:
-        log.error(f"❌ build_darktunnel: {e}", exc_info=True)
-        return None
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return "darktunnel://" + base64.b64encode(raw).decode("utf-8")
 
 
 # ═══════════════════════════════════════════
@@ -230,7 +148,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# استقبال SSO
+# استقبال SSO — صامت (بلا رسائل)
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -250,18 +168,17 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
 
+    # ✅ رسالة وحدة فقط
     await update.message.reply_text(
         f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
         f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
     )
 
-    await update.message.reply_text("☁️ GC.Run\n✅ تم استلام الرابط. جاري التنفيذ الآن...")
-
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
 # ═══════════════════════════════════════════
-# معالجة الطابور
+# معالجة الطابور — صامت
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -272,8 +189,6 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
-            msg = await context.bot.send_message(chat_id=chat_id, text="⏳ بدء العملية...")
-
             browser = StealthBrowser()
             ctx = await browser.start()
 
@@ -282,14 +197,14 @@ async def process_queue(chat_id, user_id, context):
                     ctx,
                     job["sso_url"],
                     image=config.DEFAULT_IMAGE,
-                    sender=msg,
+                    sender=None,  # صامت
                     user_tag=job["user_tag"],
                 )
 
                 domain = result["domain"]
                 final_url = result["final_url"]
 
-                # ✅ رسالة النتيجة
+                # ✅ رسالة واحدة في الأخير
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=(
@@ -300,35 +215,10 @@ async def process_queue(chat_id, user_id, context):
                     parse_mode=ParseMode.MARKDOWN,
                 )
 
-                # ✅ VLESS
-                try:
-                    vless_result = VLESS_TEMPLATE.format(domain=domain)
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"🔗 <b>VLESS:</b>\n<pre><code class=\"language-java\">{vless_result}</code></pre>",
-                        parse_mode='html',
-                    )
-                except Exception as e:
-                    log.error(f"❌ VLESS: {e}")
-
-                # ✅ JSON
-                try:
-                    json_result = JSON_TEMPLATE.replace("__DOMAIN__", domain)
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"📄 <b>JSON:</b>\n<pre><code class=\"language-json\">{json_result}</code></pre>",
-                        parse_mode='html',
-                    )
-                except Exception as e:
-                    log.error(f"❌ JSON: {e}")
-
-                # ✅ 3 ملفات dark
-                for idx, dark in enumerate(DARK_FILES, 1):
+                # ✅ 3 ملفات darktunnel
+                for dark in DARK_FILES:
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
-                        if not new_uri:
-                            log.error(f"❌ [{idx}/3] build فشل")
-                            continue
 
                         safe_domain = "".join(
                             c for c in domain.lower()
@@ -339,7 +229,6 @@ async def process_queue(chat_id, user_id, context):
 
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
-                        bio.seek(0)
 
                         await context.bot.send_document(
                             chat_id=chat_id,
@@ -347,9 +236,8 @@ async def process_queue(chat_id, user_id, context):
                             filename=filename,
                             caption=f"✅ {dark['name']}\n`{domain}`",
                         )
-                        log.info(f"✅ [{idx}/3] {dark['name']}")
                     except Exception as e:
-                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
+                        log.warning(f"⚠️ dark {dark['name']}: {e}")
 
             finally:
                 try:
