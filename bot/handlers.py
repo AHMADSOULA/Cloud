@@ -83,25 +83,36 @@ DARK_FILES = [
 
 
 def _b64_pad(s: str) -> str:
+    s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    b64 = _b64_pad(base_uri.split("darktunnel://", 1)[1].strip())
-    data = json.loads(base64.b64decode(b64.encode("utf-8")).decode("utf-8"))
+    """يفك تشفير darktunnel، يبدل wsHeaderHost، ويعيد التشفير"""
+    try:
+        raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
+        raw_b64 = _b64_pad(raw_b64)
 
-    stack = [data]
-    while stack:
-        cur = stack.pop()
-        if isinstance(cur, dict):
-            if "wsHeaderHost" in cur:
-                cur["wsHeaderHost"] = new_host
-            stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
-        elif isinstance(cur, list):
-            stack.extend(v for v in cur if isinstance(v, (dict, list)))
+        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
+        data = json.loads(decoded)
 
-    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    return "darktunnel://" + base64.b64encode(raw).decode("utf-8")
+        stack = [data]
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, dict):
+                if "wsHeaderHost" in cur:
+                    cur["wsHeaderHost"] = new_host
+                stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
+            elif isinstance(cur, list):
+                stack.extend(v for v in cur if isinstance(v, (dict, list)))
+
+        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        new_b64 = base64.b64encode(raw).decode("utf-8")
+        return "darktunnel://" + new_b64
+
+    except Exception as e:
+        log.error(f"❌ build_darktunnel فشل: {e}", exc_info=True)
+        return None
 
 
 # ═══════════════════════════════════════════
@@ -215,10 +226,24 @@ async def process_queue(chat_id, user_id, context):
                     parse_mode=ParseMode.MARKDOWN,
                 )
 
+                log.info(f"🔵 بدء إرسال {len(DARK_FILES)} ملفات dark — domain={domain}")
+
                 # ✅ 3 ملفات darktunnel
-                for dark in DARK_FILES:
+                for idx, dark in enumerate(DARK_FILES, 1):
                     try:
+                        log.info(f"🔵 [{idx}/3] {dark['name']}")
+
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
+
+                        if not new_uri:
+                            log.error(f"❌ [{idx}/3] build فشل")
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text=f"❌ فشل تحويل {dark['name']}",
+                            )
+                            continue
+
+                        log.info(f"🔵 [{idx}/3] URI len={len(new_uri)}")
 
                         safe_domain = "".join(
                             c for c in domain.lower()
@@ -237,8 +262,19 @@ async def process_queue(chat_id, user_id, context):
                             filename=filename,
                             caption=f"✅ {dark['name']}\n`{domain}`",
                         )
+                        log.info(f"✅ [{idx}/3] {dark['name']} sent")
+
                     except Exception as e:
-                        log.warning(f"⚠️ dark {dark['name']}: {e}")
+                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
+                        try:
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text=f"❌ فشل ملف {dark['name']}:\n{str(e)[:300]}",
+                            )
+                        except Exception:
+                            pass
+
+                log.info("✅ كل الملفات dark تم إرسالها")
 
             finally:
                 try:
