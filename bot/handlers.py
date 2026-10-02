@@ -82,35 +82,25 @@ DARK_FILES = [
 
 
 def _b64_pad(s: str) -> str:
-    s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    try:
-        raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
-        raw_b64 = _b64_pad(raw_b64)
+    b64 = _b64_pad(base_uri.split("darktunnel://", 1)[1].strip())
+    data = json.loads(base64.b64decode(b64.encode("utf-8")).decode("utf-8"))
 
-        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
-        data = json.loads(decoded)
+    stack = [data]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            if "wsHeaderHost" in cur:
+                cur["wsHeaderHost"] = new_host
+            stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
+        elif isinstance(cur, list):
+            stack.extend(v for v in cur if isinstance(v, (dict, list)))
 
-        stack = [data]
-        while stack:
-            cur = stack.pop()
-            if isinstance(cur, dict):
-                if "wsHeaderHost" in cur:
-                    cur["wsHeaderHost"] = new_host
-                stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
-            elif isinstance(cur, list):
-                stack.extend(v for v in cur if isinstance(v, (dict, list)))
-
-        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        new_b64 = base64.b64encode(raw).decode("utf-8")
-        return "darktunnel://" + new_b64
-
-    except Exception as e:
-        log.error(f"❌ build_darktunnel فشل: {e}")
-        return base_uri
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return "darktunnel://" + base64.b64encode(raw).decode("utf-8")
 
 
 # ═══════════════════════════════════════════
@@ -158,7 +148,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# استقبال SSO — بلا رسائل زايدة
+# استقبال SSO — صامت (بلا رسائل)
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,14 +197,14 @@ async def process_queue(chat_id, user_id, context):
                     ctx,
                     job["sso_url"],
                     image=config.DEFAULT_IMAGE,
-                    sender=None,
+                    sender=None,  # صامت
                     user_tag=job["user_tag"],
                 )
 
                 domain = result["domain"]
                 final_url = result["final_url"]
 
-                # ✅ رسالة النتيجة
+                # ✅ رسالة واحدة في الأخير
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=(
@@ -239,7 +229,6 @@ async def process_queue(chat_id, user_id, context):
 
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
-                        bio.seek(0)
 
                         await context.bot.send_document(
                             chat_id=chat_id,
