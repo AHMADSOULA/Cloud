@@ -14,10 +14,22 @@ async def post_init(app):
 
 async def route_text(update, context):
     from utils.helpers import extract_urls
+    from database import db
+
     text = update.message.text or ""
+
+    # ✅ إذا كاين رابط → handle_url
     if extract_urls(text):
         await handlers.handle_url(update, context)
         return
+
+    # ✅ إذا المستخدم في حالة انتظار كلمة السر → handle_password
+    user = update.effective_user
+    session = await db.get_session(user.id)
+    if session and session.get("state") == "waiting_password":
+        await handlers.handle_password(update, context)
+        return
+
     await update.message.reply_text("ℹ️ أرسل /start للبدء.")
 
 
