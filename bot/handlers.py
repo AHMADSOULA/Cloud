@@ -1,7 +1,4 @@
 import asyncio
-import io
-import base64
-import json
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -63,57 +60,26 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# 3 ملفات DarkTunnel
+# 3 VLESS
 # ═══════════════════════════════════════════
 
-DARK_FILES = [
-    {
-        "name": "YOUTUBE_4H_🇺🇸",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ==",
-    },
-    {
-        "name": "SNAPCHAT_4H_🇺🇸",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiU05BUENIQVRfNEhf8J-HuvCfh7giLCJ2bGVzc1R1bm5lbENvbmZpZyI6eyJ2MnJheUNvbmZpZyI6eyJob3N0IjoiZ29vZ2xlLmNvbSIsInBvcnQiOjQ0MywidXVpZCI6ImFhYWExMTExLWJiYmItNGNjYy04ZGRkLWVlZWVmZmZmMDAwMCIsInNlcnZlck5hbWVJbmRpY2F0aW9uIjoiYXBpLnNuYXBjaGF0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTEwMjc5NzcwNDc4OC51cy1jZW50cmFsMS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0=",
-    },
-    {
-        "name": "FREE_4H_🇺🇸",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2NybGZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
-    },
-]
+VLESS_YOUTUBE = (
+    "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
+    "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
+    "&host={domain}&type=ws&sni=googlevideo.com#%40AM2_D3%20YOUTUBE%20%F0%9F%87%BA%F0%9F%87%B8"
+)
 
+VLESS_SNAPCHAT = (
+    "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
+    "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
+    "&host={domain}&type=ws&sni=api.snapchat.com#%40AM2_D3%20SNAPCHAT%20%F0%9F%87%BA%F0%9F%87%B8"
+)
 
-def _b64_pad(s: str) -> str:
-    s = s.strip()
-    return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
-
-
-def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    try:
-        raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
-        raw_b64 = _b64_pad(raw_b64)
-        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
-        data = json.loads(decoded)
-
-        v2ray = data.get("vlessTunnelConfig", {}).get("v2rayConfig")
-        if v2ray and "wsHeaderHost" not in v2ray:
-            v2ray["wsHeaderHost"] = new_host
-        else:
-            stack = [data]
-            while stack:
-                cur = stack.pop()
-                if isinstance(cur, dict):
-                    if "wsHeaderHost" in cur:
-                        cur["wsHeaderHost"] = new_host
-                    stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
-                elif isinstance(cur, list):
-                    stack.extend(v for v in cur if isinstance(v, (dict, list)))
-
-        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        new_b64 = base64.b64encode(raw).decode("utf-8")
-        return "darktunnel://" + new_b64
-    except Exception as e:
-        log.error(f"❌ build_darktunnel: {e}", exc_info=True)
-        return None
+VLESS_FREE = (
+    "vless://aaaa1111-bbbb-4ccc-8ddd-eeeeffff0000@google.com:443"
+    "?path=%2FTelegram%2F%40AM2_D3%2F%40AHMAD3214&security=tls&encryption=none"
+    "&host={domain}&type=ws&sni=alt13.yt3.ggpht.com#%40AM2_D3%20FREE%20%F0%9F%87%BA%F0%9F%87%B8"
+)
 
 
 # ═══════════════════════════════════════════
@@ -220,33 +186,41 @@ async def process_queue(chat_id, user_id, context):
                 domain = result["domain"]
                 log.info(f"✅ Domain: {domain}")
 
-                # ✅ 3 ملفات dark فقط
-                for idx, dark in enumerate(DARK_FILES, 1):
-                    try:
-                        new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
-                        if not new_uri:
-                            continue
+                # ✅ VLESS YOUTUBE
+                try:
+                    vless = VLESS_YOUTUBE.format(domain=domain)
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"🔗 <b>VLESS YOUTUBE:</b>\n<pre><code class=\"language-java\">{vless}</code></pre>",
+                        parse_mode='html',
+                    )
+                    log.info("✅ VLESS YOUTUBE sent")
+                except Exception as e:
+                    log.error(f"❌ VLESS YOUTUBE: {e}")
 
-                        safe_domain = "".join(
-                            c for c in domain.lower()
-                            if c.isalnum() or c in ".-_"
-                        )[:40]
+                # ✅ VLESS SNAPCHAT
+                try:
+                    vless = VLESS_SNAPCHAT.format(domain=domain)
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"🔗 <b>VLESS SNAPCHAT:</b>\n<pre><code class=\"language-java\">{vless}</code></pre>",
+                        parse_mode='html',
+                    )
+                    log.info("✅ VLESS SNAPCHAT sent")
+                except Exception as e:
+                    log.error(f"❌ VLESS SNAPCHAT: {e}")
 
-                        filename = f"{dark['name']} - {safe_domain}.dark"
-
-                        bio = io.BytesIO(new_uri.encode("utf-8"))
-                        bio.name = filename
-                        bio.seek(0)
-
-                        await context.bot.send_document(
-                            chat_id=chat_id,
-                            document=bio,
-                            filename=filename,
-                            caption=f"✅ {dark['name']}",
-                        )
-                        log.info(f"✅ [{idx}/3] {dark['name']}")
-                    except Exception as e:
-                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
+                # ✅ VLESS FREE
+                try:
+                    vless = VLESS_FREE.format(domain=domain)
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"🔗 <b>VLESS FREE:</b>\n<pre><code class=\"language-java\">{vless}</code></pre>",
+                        parse_mode='html',
+                    )
+                    log.info("✅ VLESS FREE sent")
+                except Exception as e:
+                    log.error(f"❌ VLESS FREE: {e}")
 
             finally:
                 try:
