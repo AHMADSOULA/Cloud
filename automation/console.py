@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — سريع + step3 اختياري بدون انتظار
+كل خطوات Google Cloud Console — مع تصوير عند Create + step5 كيما GC.py
 """
 import asyncio
 from playwright.async_api import expect
@@ -15,27 +15,32 @@ class CloudConsole:
         self.sender = sender
         self.user_tag = user_tag or "@user"
 
+    # ═══════════════════════════════════════
+    # 📸 التصوير
+    # ═══════════════════════════════════════
+
     async def _shot(self, page, caption: str = ""):
         if not self.sender:
             return
         try:
-            path = f"/tmp/err_{int(asyncio.get_event_loop().time()*1000)}.png"
+            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
             await page.screenshot(path=path, full_page=False, timeout=10000)
             with open(path, "rb") as f:
                 try:
-                    await self.sender.reply_photo(photo=f, caption=f"❌ {caption}"[:1000])
-                except Exception:
-                    pass
+                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
+                    log.info(f"📸 {caption}")
+                except Exception as e:
+                    log.warning(f"⚠️ reply_photo: {e}")
             import os
             try:
                 os.remove(path)
             except Exception:
                 pass
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"⚠️ _shot: {e}")
 
     # ═══════════════════════════════════════
-    # STEP 1 — سريع
+    # STEP 1
     # ═══════════════════════════════════════
 
     async def step1_welcome_screen(self, page):
@@ -93,15 +98,14 @@ class CloudConsole:
         await page.wait_for_timeout(1000)
 
     # ═══════════════════════════════════════
-    # STEP 2 — سريع
+    # STEP 2
     # ═══════════════════════════════════════
 
     async def step2_terms_dialog(self, page):
         log.info("🚀 step2")
 
-        # فحص سريع — 3 محاولات × 500ms
         has_dialog = False
-        for _ in range(3):
+        for _ in range(5):
             try:
                 has_dialog = await page.evaluate("""
                     () => {
@@ -117,15 +121,13 @@ class CloudConsole:
                     break
             except Exception:
                 pass
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(600)
 
         if not has_dialog:
-            log.info("ℹ️ ما كاينش Dialog")
             return
 
         log.info("📋 Dialog")
 
-        # JS click على checkbox + Agree مرة وحدة
         try:
             result = await page.evaluate("""
                 () => {
@@ -165,10 +167,10 @@ class CloudConsole:
         except Exception as e:
             log.warning(f"⚠️ {e}")
 
-        await page.wait_for_timeout(1200)
+        await page.wait_for_timeout(1500)
 
     # ═══════════════════════════════════════
-    # STEP 3 — سريع (اختياري: إذا ما لقاش زر يتخطاه فورا)
+    # STEP 3 — اختياري بدون انتظار
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
@@ -184,18 +186,17 @@ class CloudConsole:
         except Exception as e:
             raise RuntimeError(f"goto: {e}")
 
-        # ✅ نستناو فقط 2 ثواني
         await page.wait_for_timeout(2000)
 
-        # ✅ فحص Sign in
+        # فحص Sign in
         try:
             if "accounts.google.com" in page.url.lower():
-                log.warning("⚠️ sign in — نتجاوزو")
-                return  # ✅ ما نطيحوش، نكملو
+                log.warning("⚠️ sign in")
+                return
         except Exception:
             pass
 
-        # ✅ فحص سريع لزر Enable/Manage — 3 محاولات × 500ms فقط
+        # 3 محاولات × 500ms
         clicked = None
         for _ in range(3):
             try:
@@ -222,10 +223,9 @@ class CloudConsole:
             await page.wait_for_timeout(1500)
         else:
             log.warning("⚠️ ما لقيناش زر — نتجاوزو")
-            return  # ✅ ما نطيحوش، نكملو
 
     # ═══════════════════════════════════════
-    # STEP 4 — سريع
+    # STEP 4 — Create + screenshot
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image):
@@ -243,7 +243,6 @@ class CloudConsole:
             except Exception:
                 pass
 
-        # نستناو الحقل — 20s
         try:
             await page.wait_for_selector('text="Container Image URL"', timeout=20000)
         except Exception:
@@ -251,7 +250,6 @@ class CloudConsole:
 
         await page.wait_for_timeout(1000)
 
-        # نكتبو الرابط
         try:
             label = page.get_by_text("Container Image URL").first
             await label.click(timeout=5000)
@@ -267,7 +265,6 @@ class CloudConsole:
 
         await page.wait_for_timeout(1000)
 
-        # إعدادات + Create
         try:
             try:
                 await page.get_by_role("radio", name="Allow public access").click(timeout=5000)
@@ -288,28 +285,24 @@ class CloudConsole:
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True, timeout=5000)
             log.info("✅ Create")
+
+            # ✅ screenshot عند الضغط على Create
+            await page.wait_for_timeout(1500)
+            await self._shot(page, "🚀 بعد الضغط على Create")
         except Exception as e:
             raise RuntimeError(f"فشل: {e}")
 
     # ═══════════════════════════════════════
-    # STEP 5 — سريع: يروح مباشرة لـ services
+    # STEP 5 — كيما GC.py: بلا goto، ينتظر في نفس الصفحة
     # ═══════════════════════════════════════
 
     async def step5_get_deployed_url(self, page):
-        log.info("⏳ step5")
+        log.info("⏳ step5: نستناو run.app (بلا goto)")
 
-        services_url = "https://console.cloud.google.com/run"
-
-        # ✅ أول حاجة: نروحو مباشرة لـ services
-        try:
-            await page.goto(services_url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(2000)
-        except Exception:
-            pass
-
-        # 20 محاولة × 3s = 60s
-        for i in range(20):
+        # ✅ كيما GC.py: نستعملو locator على نفس الصفحة
+        for i in range(60):  # 60 × 3s = 180s
             try:
+                # نلقاو الرابط في الصفحة الحالية
                 url = await page.evaluate("""
                     () => {
                         const links = document.querySelectorAll('a');
@@ -317,22 +310,21 @@ class CloudConsole:
                             const href = a.href || '';
                             if (href.includes('.run.app')) return href.split('?')[0].split('#')[0];
                         }
+                        const body = document.body.innerText || '';
+                        const m = body.match(/https:\\/\\/[a-zA-Z0-9\\-]+\\.run\\.app/);
+                        if (m) return m[0];
                         return null;
                     }
                 """)
                 if url:
-                    log.info(f"✅ {url}")
+                    log.info(f"✅ لقيناه: {url}")
                     return url
             except Exception:
                 pass
 
             await page.wait_for_timeout(3000)
 
-            if (i + 1) % 5 == 0:
-                try:
-                    await page.reload(wait_until="domcontentloaded", timeout=20000)
-                    await page.wait_for_timeout(1500)
-                except Exception:
-                    pass
+            if (i + 1) % 10 == 0:
+                log.info(f"⏳ مازال... ({(i+1)*3}s)")
 
-        raise RuntimeError("ما لقيناش رابط run.app")
+        raise RuntimeError("ما لقيناش رابط run.app بعد 180s")
