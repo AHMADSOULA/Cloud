@@ -18,15 +18,7 @@ from automation.sso_flow import run_sso_flow
 log = get_logger("Handlers")
 
 # ═══════════════════════════════════════════
-# تتبع SSO المستعملة
-# ═══════════════════════════════════════════
-
-# set فيه الروابط اللي خدمنا بيها (في الذاكرة)
-USED_SSO_URLS = set()
-
-
-# ═══════════════════════════════════════════
-# طابور (Queue)
+# طابور
 # ═══════════════════════════════════════════
 
 class JobQueue:
@@ -49,12 +41,6 @@ class JobQueue:
             })
             return num
 
-    def position(self, user_id):
-        for i, item in enumerate(self.queue):
-            if item["user_id"] == user_id:
-                return i + 1
-        return 0
-
     async def get_next(self):
         async with self.lock:
             if self.current is not None:
@@ -76,7 +62,7 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# ملفات DarkTunnel (3 ملفات)
+# 3 ملفات DarkTunnel
 # ═══════════════════════════════════════════
 
 DARK_FILES = [
@@ -178,19 +164,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ الرابط لا يبدو من Google Skills.")
         return
 
-    # ✅ تتبع SSO مستعمل من قبل
-    if sso_url in USED_SSO_URLS:
-        await update.message.reply_text(
-            "⚠️ *هذا الرابط مستعمل من قبل*\n\n"
-            "رايح نعيد تشغيلو ولكن باسم خدمة جديد باش ما يصراش conflict.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-    else:
-        USED_SSO_URLS.add(sso_url)
-        # حد أقصى 200 رابط في الذاكرة
-        if len(USED_SSO_URLS) > 200:
-            USED_SSO_URLS.clear()
-
     user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
@@ -234,7 +207,6 @@ async def process_queue(chat_id, user_id, context):
                 domain = result["domain"]
                 final_url = result["final_url"]
 
-                # ✅ رسالة النجاح
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=(
@@ -268,10 +240,6 @@ async def process_queue(chat_id, user_id, context):
                         )
                     except Exception as e:
                         log.warning(f"⚠️ dark {dark['name']}: {e}")
-                        await context.bot.send_message(
-                            chat_id=chat_id,
-                            text=f"⚠️ فشل ملف {dark['name']}: {str(e)[:200]}",
-                        )
 
             finally:
                 try:
