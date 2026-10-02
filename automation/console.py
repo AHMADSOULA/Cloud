@@ -1,7 +1,9 @@
 """
 automation/console.py
 كل خطوات Google Cloud Console — مأخوذة من GC.py
+مع تصوير في المراحل المهمة
 """
+import asyncio
 from playwright.async_api import expect
 from utils.logger import get_logger
 
@@ -9,8 +11,33 @@ log = get_logger("Console")
 
 
 class CloudConsole:
-    def __init__(self, context):
+    def __init__(self, context, sender=None):
         self.context = context
+        self.sender = sender  # رسالة Telegram باش نبعثو الصور
+
+    # ═══════════════════════════════════════
+    # 📸 أداة التصوير
+    # ═══════════════════════════════════════
+
+    async def _shot(self, page, caption: str = ""):
+        """يصور الصفحة ويبعثها في Telegram"""
+        if not self.sender:
+            return
+        try:
+            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
+            await page.screenshot(path=path, full_page=False, timeout=15000)
+            with open(path, "rb") as f:
+                try:
+                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
+                except Exception:
+                    pass
+            import os
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        except Exception as e:
+            log.warning(f"⚠️ _shot: {e}")
 
     # ═══════════════════════════════════════
     # STEP 1: TOS الأولى (زر I understand)
@@ -20,7 +47,10 @@ class CloudConsole:
         log.info("🚀 step1: Welcome / TOS")
 
         await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(2500)
+
+        # 📸 نصور الوصول لصفحة Welcome
+        await self._shot(page, "3️⃣ صفحة Welcome")
 
         try:
             is_tos = await page.evaluate("""
@@ -72,6 +102,7 @@ class CloudConsole:
 
         if not target:
             log.warning("⚠️ ما لقيناش الزر")
+            await self._shot(page, "⚠️ ما لقيناش زر I understand")
             return
 
         log.info(f"🎯 '{target['text']}' @({target['x']},{target['y']})")
@@ -126,6 +157,8 @@ class CloudConsole:
             except Exception:
                 pass
 
+        # نستناو الزر يختفي
+        gone = False
         for i in range(20):
             await page.wait_for_timeout(2000)
             try:
@@ -144,6 +177,9 @@ class CloudConsole:
                     break
             except Exception:
                 log.info(f"⏳ {i+1}")
+
+        if gone:
+            await self._shot(page, "✅ تم قبول الشروط الأولى")
 
         log.info("✅ step1 انتهى")
 
@@ -176,6 +212,8 @@ class CloudConsole:
             return
 
         log.info("📋 لقينا Dialog")
+        # 📸 نصور Terms Dialog
+        await self._shot(page, "📋 Terms Dialog")
 
         # checkbox
         try:
@@ -369,6 +407,8 @@ class CloudConsole:
                 except Exception:
                     continue
 
+        # نستناو Dialog يختفي
+        gone = False
         for i in range(15):
             await page.wait_for_timeout(2000)
             try:
@@ -388,10 +428,13 @@ class CloudConsole:
             except Exception:
                 log.info(f"⏳ {i+1}")
 
+        if gone:
+            await self._shot(page, "✅ تم قبول Terms Dialog")
+
         log.info("✅ step2 انتهى")
 
     # ═══════════════════════════════════════
-    # STEP 3: Enable API
+    # STEP 3: Enable API — مع معالجة قوية
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
@@ -399,24 +442,90 @@ class CloudConsole:
             f"https://console.cloud.google.com/apis/library/"
             f"run.googleapis.com?project={project_id}&authuser={authuser}"
         )
-        log.info(f"🌐 Enable API")
+        log.info(f"🌐 Enable API — URL: {api_url[:150]}")
         await page.goto(api_url, wait_until="domcontentloaded")
-        await page.wait_for_timeout(3000)
+        await page.wait_for_timeout(5000)
+
+        # 📸 نصور وصول Cloud Console
+        await self._shot(page, "☁️ وصلنا Google Cloud Console")
+
+        # ✅ نسجل URL الحالي
+        try:
+            current_url = page.url
+            log.info(f"📍 URL الحالي: {current_url[:150]}")
+        except Exception:
+            pass
+
+        # ✅ نتحققو بلي الصفحة ماشي login/TOS
+        try:
+            is_blocked = await page.evaluate("""
+                () => {
+                    const url = window.location.href.toLowerCase();
+                    if (url.includes('accounts.google.com') ||
+                        url.includes('workspacetermsofservice') ||
+                        url.includes('speedbump')) {
+                        return url;
+                    }
+                    const body = (document.body.innerText || '').toLowerCase();
+                    if (body.includes('sign in') && body.includes('google')) return 'signin';
+                    return null;
+                }
+            """)
+            if is_blocked:
+                raise RuntimeError(f"⛔ الصفحة محجوبة — {is_blocked}")
+        except Exception as e:
+            log.warning(f"⚠️ فحص الحجب: {e}")
 
         enable_btn = page.get_by_role("button", name="Enable")
         manage_btn = page.get_by_role("button", name="Manage")
         disable_btn = page.get_by_text("Disable API")
 
-        try:
-            await expect(enable_btn.or_(manage_btn)).to_be_visible(timeout=20000)
-            if await enable_btn.is_visible():
-                await enable_btn.click()
-                await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=90000)
-                log.info("✅ API مفعّل")
-            elif await manage_btn.is_visible():
-                log.info("ℹ️ API مفعّل مسبقا")
-        except Exception as e:
-            raise RuntimeError(f"فشل تفعيل API: {str(e)}")
+        found = False
+        for attempt in range(30):
+            try:
+                if await enable_btn.count() > 0 and await enable_btn.is_visible():
+                    log.info("✅ لقينا زر Enable")
+                    await enable_btn.click()
+                    log.info("🔄 ضغطنا Enable — نستناو Manage")
+                    try:
+                        await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=120000)
+                        log.info("✅ API مفعّل")
+                        await self._shot(page, "✅ Cloud Run API مفعّل")
+                    except Exception as e:
+                        log.warning(f"⚠️ ما ظهرش Manage بعد Enable: {e}")
+                    found = True
+                    break
+
+                if await manage_btn.count() > 0 and await manage_btn.is_visible():
+                    log.info("ℹ️ API مفعّل من قبل (Manage visible)")
+                    found = True
+                    break
+            except Exception as e:
+                log.warning(f"⚠️ محاولة {attempt+1}: {e}")
+
+            await page.wait_for_timeout(2000)
+
+        if not found:
+            try:
+                info = await page.evaluate("""
+                    () => {
+                        const url = window.location.href;
+                        const buttons = [];
+                        for (const el of document.querySelectorAll('button, [role="button"], a')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || '').trim();
+                            if (t && t.length < 50) buttons.push(t);
+                        }
+                        return { url, buttons: buttons.slice(0, 30) };
+                    }
+                """)
+                log.error(f"❌ ما لقيناش زر Enable/Manage")
+                log.error(f"📍 URL: {info.get('url', '')[:200]}")
+                log.error(f"🔘 الأزرار: {info.get('buttons', [])}")
+            except Exception:
+                pass
+            await self._shot(page, "❌ ما لقيناش زر Enable")
+            raise RuntimeError("ما لقيناش زر Enable ولا Manage بعد 60 ثانية")
 
     # ═══════════════════════════════════════
     # STEP 4: Create Cloud Run
@@ -431,12 +540,16 @@ class CloudConsole:
         await page.goto(run_url, wait_until="domcontentloaded")
         await page.wait_for_timeout(6000)
 
+        # 📸 نصور صفحة Cloud Run
+        await self._shot(page, "🚀 صفحة إنشاء Cloud Run")
+
         try:
             label = page.get_by_text("Container Image URL").first
             await label.click()
             await page.wait_for_timeout(500)
             await page.keyboard.type(image, delay=50)
             log.info("✅ رابط الحاوية")
+            await self._shot(page, "📦 تم إدخال رابط الحاوية")
         except Exception as e:
             raise RuntimeError(f"فشل كتابة الرابط: {str(e)}")
 
@@ -452,9 +565,12 @@ class CloudConsole:
             await page.keyboard.press("End")
             await page.wait_for_timeout(1000)
 
+            await self._shot(page, "⚙️ الإعدادات جاهزة")
+
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True)
             log.info("✅ Create")
+            await self._shot(page, "▶️ تم الضغط على Create")
         except Exception as e:
             raise RuntimeError(f"فشل الإعدادات: {str(e)}")
 
@@ -467,4 +583,5 @@ class CloudConsole:
         await link_locator.wait_for(state="visible", timeout=180000)
         final_url = await link_locator.get_attribute("href")
         log.info(f"✅ URL: {final_url}")
+        await self._shot(page, "🎯 Cloud Run جاهز")
         return final_url
