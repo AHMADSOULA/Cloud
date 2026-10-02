@@ -76,31 +76,48 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H_🇺🇸",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtMTAyNzk3NzA0Nzg4LnVzLWNlbnRyYWwxLnJ1bi5hcHAifSwiaW5qZWN0Q29uZmlnIjp7ImVuYWJsZWQiOnRydWUsIm1vZGUiOiJQUk9YWSIsInByb3h5SG9zdCI6IjE1Ny4yNDAuOS4zOSIsInBheWxvYWQiOiJDT05ORUNUIFtob3N0XTpbcG9ydF0gSFRUUC8xLjFbY3JsZl14LWNvbm5lY3RlZC10bzogMzQuMTQzLjcyLjJbY3JsZl1wcm94eS1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZdY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXXVzZXItYWdlbnQ6IEZCQVYvMC4wIFtjcmxmXXgtaW9yZy1ic2lkOiBAQU0yX0QzW2NybGZdW2NybGZdIn19fQ==",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtMTAyNzk3NzA0Nzg4LnVzLWNlbnRyYWwxLnJ1bi5hcHAifSwiaW5qZWN0Q29uZmlnIjp7ImVuYWJsZWQiOnRydWUsIm1vZGUiOiJQUk9YWSIsInByb3h5SG9zdCI6IjE1Ny4yNDAuOS4zOSIsInBheWxvYWQiOiJDT05ORUNUIFtob3N0XTpbcG9ydF0gSFRUUC8xLjFbY3JsZl14LWNvbm5lY3RlZC10bzogMzQuMTQzLjcyLjJbY3JsZl1wcm94eS1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZdY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXXVzZXItYWdlbnQ6IEZBQVYvMC4wIFtjcmxmXXgtaW9yZy1ic2lkOiBAQU0yX0QzW2NybGZdW2NybGZdIn19fQ==",
     },
 ]
 
 
 def _b64_pad(s: str) -> str:
+    """يزيد padding إذا ناقص"""
+    s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    b64 = _b64_pad(base_uri.split("darktunnel://", 1)[1].strip())
-    data = json.loads(base64.b64decode(b64.encode("utf-8")).decode("utf-8"))
+    """يفك تشفير darktunnel، يبدل wsHeaderHost، ويعيد التشفير"""
+    try:
+        # ✅ نحيّد البرفيكس
+        raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
+        raw_b64 = _b64_pad(raw_b64)
 
-    stack = [data]
-    while stack:
-        cur = stack.pop()
-        if isinstance(cur, dict):
-            if "wsHeaderHost" in cur:
-                cur["wsHeaderHost"] = new_host
-            stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
-        elif isinstance(cur, list):
-            stack.extend(v for v in cur if isinstance(v, (dict, list)))
+        # ✅ decode
+        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
+        data = json.loads(decoded)
 
-    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    return "darktunnel://" + base64.b64encode(raw).decode("utf-8")
+        # ✅ نمشيو في كل dict ونبدلو wsHeaderHost
+        stack = [data]
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, dict):
+                if "wsHeaderHost" in cur:
+                    cur["wsHeaderHost"] = new_host
+                stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
+            elif isinstance(cur, list):
+                stack.extend(v for v in cur if isinstance(v, (dict, list)))
+
+        # ✅ نعاودو نشفرو
+        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        new_b64 = base64.b64encode(raw).decode("utf-8")
+        return "darktunnel://" + new_b64
+
+    except Exception as e:
+        log.error(f"❌ build_darktunnel فشل: {e}")
+        # إذا فشل، نرجعو الأصلي
+        return base_uri
 
 
 # ═══════════════════════════════════════════
@@ -148,7 +165,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# استقبال SSO — صامت (بلا رسائل)
+# استقبال SSO
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -168,7 +185,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
 
-    # ✅ رسالة وحدة فقط
     await update.message.reply_text(
         f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
         f"يمكنك إرسال رابط آخر وسيضاف إلى الطابور تلقائياً."
@@ -178,7 +194,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# معالجة الطابور — صامت
+# معالجة الطابور
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -197,14 +213,14 @@ async def process_queue(chat_id, user_id, context):
                     ctx,
                     job["sso_url"],
                     image=config.DEFAULT_IMAGE,
-                    sender=None,  # صامت
+                    sender=None,
                     user_tag=job["user_tag"],
                 )
 
                 domain = result["domain"]
                 final_url = result["final_url"]
 
-                # ✅ رسالة واحدة في الأخير
+                # ✅ رسالة النتيجة
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=(
@@ -215,10 +231,15 @@ async def process_queue(chat_id, user_id, context):
                     parse_mode=ParseMode.MARKDOWN,
                 )
 
+                log.info(f"🔵 بدء إرسال {len(DARK_FILES)} ملفات dark")
+
                 # ✅ 3 ملفات darktunnel
-                for dark in DARK_FILES:
+                for idx, dark in enumerate(DARK_FILES, 1):
                     try:
+                        log.info(f"🔵 [{idx}/3] {dark['name']}")
+
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
+                        log.info(f"🔵 URI length: {len(new_uri)}")
 
                         safe_domain = "".join(
                             c for c in domain.lower()
@@ -227,8 +248,10 @@ async def process_queue(chat_id, user_id, context):
 
                         filename = f"{dark['name']} - {safe_domain}.dark"
 
+                        # ✅ BytesIO مع seek(0)
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
+                        bio.seek(0)
 
                         await context.bot.send_document(
                             chat_id=chat_id,
@@ -236,8 +259,19 @@ async def process_queue(chat_id, user_id, context):
                             filename=filename,
                             caption=f"✅ {dark['name']}\n`{domain}`",
                         )
+                        log.info(f"✅ [{idx}/3] {dark['name']} sent")
+
                     except Exception as e:
-                        log.warning(f"⚠️ dark {dark['name']}: {e}")
+                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
+                        try:
+                            await context.bot.send_message(
+                                chat_id=chat_id,
+                                text=f"❌ فشل ملف {dark['name']}:\n{str(e)[:300]}",
+                            )
+                        except Exception:
+                            pass
+
+                log.info("✅ كل الملفات dark تم إرسالها")
 
             finally:
                 try:
