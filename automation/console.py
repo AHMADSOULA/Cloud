@@ -35,7 +35,7 @@ class CloudConsole:
             pass
 
     # ═══════════════════════════════════════
-    # STEP 1 — سريع
+    # STEP 1
     # ═══════════════════════════════════════
 
     async def step1_welcome_screen(self, page):
@@ -138,7 +138,7 @@ class CloudConsole:
         await page.wait_for_timeout(1200)
 
     # ═══════════════════════════════════════
-    # STEP 3 — سريع (اختياري)
+    # STEP 3
     # ═══════════════════════════════════════
 
     async def step3_enable_api(self, page, project_id, authuser):
@@ -187,7 +187,7 @@ class CloudConsole:
             await page.wait_for_timeout(1500)
 
     # ═══════════════════════════════════════
-    # STEP 4 — Region تلقائي
+    # STEP 4
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image, region="us-central1"):
@@ -212,7 +212,6 @@ class CloudConsole:
 
         await page.wait_for_timeout(1200)
 
-        # ✅ نكتبو الرابط
         try:
             label = page.get_by_text("Container Image URL").first
             await label.click(timeout=5000)
@@ -226,7 +225,6 @@ class CloudConsole:
 
         await page.wait_for_timeout(800)
 
-        # ✅ نختارو region إذا ماشي مضبوط
         try:
             region_current = await page.evaluate("""
                 () => {
@@ -254,7 +252,6 @@ class CloudConsole:
 
         await page.wait_for_timeout(800)
 
-        # ✅ radios
         try:
             await page.get_by_role("radio", name="Allow public access").click(timeout=5000)
         except Exception:
@@ -271,7 +268,6 @@ class CloudConsole:
         await page.keyboard.press("End")
         await page.wait_for_timeout(400)
 
-        # ✅ Create
         try:
             create_btn = page.get_by_role("button", name="Create")
             await create_btn.click(force=True, timeout=5000)
@@ -295,13 +291,13 @@ class CloudConsole:
                 raise RuntimeError(f"فشل Create: {e2}")
 
     # ═══════════════════════════════════════
-    # STEP 5 — سريع
+    # STEP 5
     # ═══════════════════════════════════════
 
     async def step5_get_deployed_url(self, page):
         log.info("⏳ step5")
 
-        for i in range(60):  # 60 × 1s = 60s
+        for i in range(60):
             try:
                 url = await page.evaluate("""
                     () => {
