@@ -6,6 +6,8 @@ load_dotenv()
 
 class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN")
+    ADMIN_ID = int(os.getenv("ADMIN_ID", "7119011124"))
+
     DEFAULT_IMAGE = os.getenv("DEFAULT_IMAGE", "docker.io/ajndjd2/ahmed-vip1")
 
     HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
