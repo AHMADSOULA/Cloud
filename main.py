@@ -19,22 +19,15 @@ async def route_text(update, context):
     text = update.message.text or ""
     user = update.effective_user
 
-    # 1. رابط
+    # ✅ 1. رابط → handle_url
     if extract_urls(text):
         await handlers.handle_url(update, context)
         return
 
-    # 2. session → كلمة سر
+    # ✅ 2. session → كلمة سر
     session = await db.get_session(user.id)
-    if session:
-        state = session.get("state")
-        if state in ("waiting_password", "waiting_password_register"):
-            await handlers.handle_password(update, context)
-            return
-
-    # 3. إيميل
-    if handlers.is_email_only(text):
-        await handlers.handle_email(update, context)
+    if session and session.get("state") == "waiting_password":
+        await handlers.handle_password(update, context)
         return
 
     await update.message.reply_text("ℹ️ أرسل /start للبدء.")
