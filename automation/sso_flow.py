@@ -60,7 +60,6 @@ def extract_password_from_url(url: str) -> str:
 
 
 def _has_password(url: str) -> bool:
-    """واش الرابط فيه كلمة سر؟"""
     u = (url or "").lower()
     return "password=" in u
 
@@ -70,13 +69,13 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
     if not project_id:
         raise RuntimeError("❌ Project ID ماكانش في الرابط.")
 
-    # ✅ نختارو region حسب الرابط
+    # ✅ region تلقائي
     if _has_password(sso_url):
-        region = "us-central1"    # 🇺🇸 أمريكا
+        region = "us-central1"
         flag = "🇺🇸"
         log.info(f"🇺🇸 Region = US (فيه كلمة سر)")
     else:
-        region = "europe-west1"   # 🇧🇪 بلجيكا
+        region = "europe-west1"
         flag = "🇧🇪"
         log.info(f"🇧🇪 Region = EU (بلا كلمة سر)")
 
@@ -100,7 +99,6 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             pass
 
-    # ✅ صفحة وحدة
     page = await context.new_page()
     try:
         # 1
@@ -110,7 +108,6 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             await page.goto(sso_url, wait_until="commit", timeout=45000)
 
-        # فحص SSO منتهي
         await page.wait_for_timeout(1500)
         try:
             expired = await page.evaluate("""
@@ -141,7 +138,6 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception as e:
             log.warning(f"⚠️ step2: {e}")
 
-        # نستناو Dashboard
         try:
             await page.wait_for_url("**/home/dashboard**", timeout=30000)
         except Exception:
@@ -183,7 +179,6 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             await console._shot(page, "❌ step5 فشل")
             return {"success": False, "error": "step5_failed", "message": str(e)[:200]}
 
-        # ✅ نحذفو الرسالة
         if status_msg:
             try:
                 await status_msg.delete()
