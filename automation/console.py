@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console
+كل خطوات Google Cloud Console — بلا تصوير عادي
 """
 import asyncio
 from playwright.async_api import expect
@@ -16,23 +16,25 @@ class CloudConsole:
         self.user_tag = user_tag or "@user"
 
     async def _shot(self, page, caption: str = ""):
+        """screenshot + send (غير عند الفشل)"""
         if not self.sender:
             return
         try:
-            path = f"/tmp/err_{int(asyncio.get_event_loop().time()*1000)}.png"
+            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
             await page.screenshot(path=path, full_page=False, timeout=8000)
             with open(path, "rb") as f:
                 try:
-                    await self.sender.reply_photo(photo=f, caption=f"❌ {caption}"[:1000])
-                except Exception:
-                    pass
+                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
+                    log.info(f"📸 {caption}")
+                except Exception as e:
+                    log.warning(f"⚠️ reply_photo: {e}")
             import os
             try:
                 os.remove(path)
             except Exception:
                 pass
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"⚠️ _shot: {e}")
 
     # ═══════════════════════════════════════
     # STEP 1
