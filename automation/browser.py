@@ -16,6 +16,11 @@ class StealthBrowser:
         self.playwright = await async_playwright().start()
         os.makedirs(config.CHROME_PROFILE_DIR, exist_ok=True)
 
+        # ✅ نضمنو DISPLAY
+        if not config.HEADLESS:
+            os.environ.setdefault("DISPLAY", ":99")
+            log.info(f"🖥️ DISPLAY = {os.environ.get('DISPLAY')}")
+
         args = [
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox",
@@ -23,7 +28,6 @@ class StealthBrowser:
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--disable-software-rasterizer",
-            "--disable-accelerated-2d-canvas",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-infobars",
@@ -35,12 +39,6 @@ class StealthBrowser:
             "--disable-background-timer-throttling",
             "--disable-renderer-backgrounding",
             "--disable-backgrounding-occluded-windows",
-            "--mute-audio",
-            "--hide-scrollbars",
-            "--metrics-recording-only",
-            "--safebrowsing-disable-auto-update",
-            "--renderer-process-limit=1",
-            "--js-flags=--max-old-space-size=256",
             "--window-size=1280,720",
             f"--user-agent={config.USER_AGENT}",
         ]
@@ -65,7 +63,7 @@ class StealthBrowser:
         self.context.set_default_timeout(config.PAGE_TIMEOUT)
         self.context.set_default_navigation_timeout(config.NAV_TIMEOUT)
 
-        log.info("✅ المتصفح جاهز")
+        log.info(f"✅ المتصفح جاهز — headless={config.HEADLESS}")
         return self.context
 
     async def close(self):
