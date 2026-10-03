@@ -1,8 +1,9 @@
 """
 automation/sso_flow.py
-تنسيق العملية — رسالة وحدة تتغير + region تلقائي
+تنسيق العملية — فحص Dashboard بعد TOS + توقف فوري
 """
 import re
+import asyncio
 from urllib.parse import urlparse, parse_qs
 
 from automation.console import CloudConsole
@@ -63,26 +64,69 @@ def _has_password(url: str) -> bool:
     return "password=" in (url or "").lower()
 
 
+async def _is_dashboard(page) -> bool:
+    """يتحقق واش وصلنا Cloud Console Dashboard"""
+    try:
+        return await page.evaluate("""
+            () => {
+                const url = window.location.href.toLowerCase();
+                if (url.includes('console.cloud.google.com') &&
+                    !url.includes('signin') &&
+                    !url.includes('accounts.google.com')) {
+                    const body = (document.body.innerText || '').toLowerCase();
+                    // نتأكدو بلي ماشي صفحة تسجيل دخول
+                    if (body.includes('sign in') && body.includes('google account')) return false;
+                    return true;
+                }
+                return false;
+            }
+        """)
+    except Exception:
+        return False
+
+
+async def _is_signin(page) -> bool:
+    """يتحقق واش رجعنا لصفحة تسجيل الدخول"""
+    try:
+        return await page.evaluate("""
+            () => {
+                const url = window.location.href.toLowerCase();
+                if (url.includes('accounts.google.com/signin') && !url.includes('addsession')) {
+                    return true;
+                }
+                const body = (document.body.innerText || '').toLowerCase();
+                if (body.includes('session expired') ||
+                    body.includes('no longer valid') ||
+                    body.includes('invalid link') ||
+                    body.includes('sign in to continue')) {
+                    return true;
+                }
+                return false;
+            }
+        """)
+    except Exception:
+        return False
+
+
 async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag="@user") -> dict:
     project_id = extract_project_id(sso_url)
     if not project_id:
         raise RuntimeError("❌ Project ID ماكانش في الرابط.")
 
-    # ✅ region تلقائي حسب الرابط
+    # ✅ region تلقائي
     if _has_password(sso_url):
         region = "us-central1"
         flag = "🇺🇸"
-        log.info("🇺🇸 Region = US (فيه كلمة سر)")
+        log.info("🇺🇸 Region = US")
     else:
         region = "europe-west1"
         flag = "🇧🇪"
-        log.info("🇧🇪 Region = EU (بلا كلمة سر)")
+        log.info("🇧🇪 Region = EU")
 
     log.info(f"🚀 SSO — project={project_id}")
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
-    # ✅ رسالة وحدة تتبدل
     status_msg = None
     if sender:
         try:
@@ -98,69 +142,113 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             pass
 
-    # ✅ صفحة وحدة
     page = await context.new_page()
     try:
-        # 1
+        # ═══════ 1) SSO ═══════
         await update_status(1, "فتح الرابط")
         try:
             await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
         except Exception:
             await page.goto(sso_url, wait_until="commit", timeout=60000)
 
-        # 2
+        await page.wait_for_timeout(2000)
+
+        # ❌ فحص: SSO منتهي؟
+        if await _is_signin(page):
+            log.warning("❌ SSO منتهي — signin")
+            await console._shot(page, "❌ SSO منتهي")
+            return {
+                "success": False,
+                "error": "expired_sso",
+                "message": "❌ SSO منتهي أو غير صالح",
+            }
+
+        # ═══════ 2) TOS ═══════
         await update_status(2, "TOS")
         try:
             await console.step1_welcome_screen(page)
         except Exception as e:
             log.warning(f"⚠️ step1: {e}")
 
-        # 3
+        await page.wait_for_timeout(1500)
+
+        # ❌ فحص: بعد TOS
+        if await _is_signin(page):
+            log.warning("❌ SSO منتهي — بعد TOS")
+            await console._shot(page, "❌ SSO منتهي")
+            return {
+                "success": False,
+                "error": "expired_sso",
+                "message": "❌ SSO منتهي — بعد TOS",
+            }
+
+        # ═══════ 3) Terms Dialog ═══════
         await update_status(3, "Terms Dialog")
         try:
             await console.step2_terms_dialog(page)
         except Exception as e:
             log.warning(f"⚠️ step2: {e}")
 
-        # نستناو Dashboard
-        try:
-            await page.wait_for_url("**/home/dashboard**", timeout=45000)
-        except Exception:
-            pass
+        # ✅ 4. نستناو Dashboard — 20 ثانية
+        log.info("⏳ نستناو Dashboard...")
+        dashboard_ok = False
+        for i in range(20):
+            await page.wait_for_timeout(1000)
 
-        await page.wait_for_timeout(500)
+            if await _is_dashboard(page):
+                dashboard_ok = True
+                log.info(f"✅ Dashboard بعد {i+1}s")
+                break
+
+            if await _is_signin(page):
+                log.warning(f"❌ رجعنا لـ signin بعد {i+1}s")
+                await console._shot(page, "❌ SSO منتهي — رجعنا لـ signin")
+                return {
+                    "success": False,
+                    "error": "expired_sso",
+                    "message": "❌ SSO منتهي — رجعنا لصفحة تسجيل الدخول",
+                }
+
+        if not dashboard_ok:
+            log.warning("❌ ما وصلناش Dashboard")
+            await console._shot(page, "❌ ما وصلناش Dashboard")
+            return {
+                "success": False,
+                "error": "no_dashboard",
+                "message": "❌ SSO منتهي — ما وصلناش Dashboard",
+            }
+
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # 4
+        # ═══════ 5) Enable API ═══════
         await update_status(4, "تفعيل API")
         try:
             await console.step3_enable_api(page, project_id, authuser)
         except Exception as e:
             log.warning(f"⚠️ step3: {e}")
 
-        # 5
+        # ═══════ 6) Create Cloud Run ═══════
         await update_status(5, f"إنشاء Cloud Run {flag}")
         try:
             await console.step4_create_cloud_run(page, project_id, authuser, image, region=region)
         except Exception as e:
             await console._shot(page, "❌ step4 فشل")
-            raise RuntimeError(f"فشل Cloud Run: {e}")
+            return {"success": False, "error": "step4_failed", "message": str(e)[:200]}
 
-        # 6
-        await update_status(6, "")
-        # 7
+        # ═══════ 7) Create ═══════
         await update_status(7, "Create")
-        # 8
+        await page.wait_for_timeout(400)
+
+        # ═══════ 8) انتظار الرابط ═══════
         await update_status(8, "انتظار الرابط")
         try:
             final_url = await console.step5_get_deployed_url(page)
             domain = extract_domain_from_service_url(final_url)
         except Exception as e:
             await console._shot(page, "❌ step5 فشل")
-            raise
+            return {"success": False, "error": "step5_failed", "message": str(e)[:200]}
 
-        # ✅ نحذفو رسالة الحالة
         if status_msg:
             try:
                 await status_msg.delete()
@@ -174,6 +262,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             pass
 
     return {
+        "success": True,
         "project_id": project_id,
         "authuser": authuser,
         "final_url": final_url,
