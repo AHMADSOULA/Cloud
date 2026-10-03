@@ -184,7 +184,6 @@ def is_direct_addsession_url(url: str) -> bool:
 
 
 def is_email_only(text: str) -> bool:
-    """واش الرسالة غير إيميل؟"""
     text = (text or "").strip()
     if "@" in text and "." in text and " " not in text:
         if "http" not in text.lower():
@@ -193,13 +192,12 @@ def is_email_only(text: str) -> bool:
 
 
 def generate_password() -> str:
-    """يولّد كلمة سر قوية"""
     chars = string.ascii_letters + string.digits + "!@#$%"
     return "".join(random.choices(chars, k=12))
 
 
 # ═══════════════════════════════════════════
-# handle_url — SSO + AddSession
+# handle_url
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -217,7 +215,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
     log.info(f"🔗 URL: {sso_url[:150]}")
 
-    # ✅ 1. SSO كامل → بلا كلمة سر
     if is_full_sso_url(sso_url):
         num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
         await update.message.reply_text(
@@ -227,7 +224,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
         return
 
-    # ✅ 2. AddSession مباشر → تطلب كلمة سر
     if is_direct_addsession_url(sso_url):
         from automation.sso_flow import extract_email_from_url
         email = extract_email_from_url(sso_url)
@@ -244,26 +240,23 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    # ✅ 3. رابط آخر
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
     await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
 # ═══════════════════════════════════════════
-# handle_email — إيميل فقط → تسجيل حساب
+# handle_email — إيميل فقط
 # ═══════════════════════════════════════════
 
 async def handle_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     email = (update.message.text or "").strip()
 
-    user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
-
     await db.set_session(
         user_id=user.id,
         state="waiting_password_register",
-        sso_url=email,  # نخزنو الإيميل
+        sso_url=email,
     )
 
     await update.message.reply_text(
@@ -274,7 +267,7 @@ async def handle_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# handle_password — كلمة السر
+# handle_password
 # ═══════════════════════════════════════════
 
 async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -315,29 +308,33 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ✅ حالة 2: register → كلمة سر
     if state == "waiting_password_register":
-        email = session.get("sso_url")  # الإيميل
+        email = session.get("sso_url")
         if not email:
             await update.message.reply_text("❌ ما لقيناش الإيميل.")
             return
         await db.clear_session(user.id)
 
-        await update.message.reply_text(
-            f"⏳ جاري إنشاء الحساب...\n\n📧 `{email}`",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
         asyncio.create_task(register_account(user.id, email, password, update.effective_chat.id, context))
 
 
 # ═══════════════════════════════════════════
-# register_account
+# register_account — مع تصوير
 # ═══════════════════════════════════════════
 
 async def register_account(user_id, email, password, chat_id, context):
     browser = StealthBrowser()
     try:
         ctx = await browser.start()
-        register = SkillsRegister(ctx, sender=None, user_tag="@user")
+
+        # ✅ نبعثو رسالة باش نستعملوها كـ sender
+        msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"⏳ جاري إنشاء الحساب...\n\n📧 `{email}`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        # ✅ نمررو sender=msg
+        register = SkillsRegister(ctx, sender=msg, user_tag="@user")
 
         result = await register.register(email, password)
 
@@ -372,7 +369,7 @@ async def register_account(user_id, email, password, chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# معالجة الطابور SSO
+# process_queue — SSO
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
