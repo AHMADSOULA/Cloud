@@ -19,12 +19,12 @@ async def route_text(update, context):
     text = update.message.text or ""
     user = update.effective_user
 
-    # ✅ 1. رابط → handle_url
+    # 1. رابط
     if extract_urls(text):
         await handlers.handle_url(update, context)
         return
 
-    # ✅ 2. session → كلمة سر
+    # 2. session → كلمة سر
     session = await db.get_session(user.id)
     if session:
         state = session.get("state")
@@ -32,7 +32,7 @@ async def route_text(update, context):
             await handlers.handle_password(update, context)
             return
 
-    # ✅ 3. إيميل فقط → handle_email
+    # 3. إيميل
     if handlers.is_email_only(text):
         await handlers.handle_email(update, context)
         return
