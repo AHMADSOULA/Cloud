@@ -63,20 +63,20 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# 3 ملفات Dark
+# 3 ملفات Dark (بلا flag — الـ flag يتزاد في process_queue)
 # ═══════════════════════════════════════════
 
 DARK_FILES = [
     {
-        "name": "YOUTUBE_4H_🇺🇸",
+        "name": "YOUTUBE_4H",
         "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ==",
     },
     {
-        "name": "SNAPCHAT_4H_🇺🇸",
+        "name": "SNAPCHAT_4H",
         "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiU05BUENIQVRfNEhf8J-HuvCfh7giLCJ2bGVzc1R1bm5lbENvbmZpZyI6eyJ2MnJheUNvbmZpZyI6eyJob3N0IjoiZ29vZ2xlLmNvbSIsInBvcnQiOjQ0MywidXVpZCI6ImFhYWExMTExLWJiYmItNGNjYy04ZGRkLWVlZWVmZmZmMDAwMCIsInNlcnZlck5hbWVJbmRpY2F0aW9uIjoiYXBpLnNuYXBjaGF0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTEwMjc5NzcwNDc4OC51cy1jZW50cmFsMS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0=",
     },
     {
-        "name": "FREE_4H_🇺🇸",
+        "name": "FREE_4H",
         "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2NybGZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
@@ -265,7 +265,6 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
-            # ✅ رسالة وحدة تتغير
             msg = await context.bot.send_message(chat_id=chat_id, text="🚀 جاري التنفيذ... [0/8]")
 
             browser = StealthBrowser()
@@ -305,22 +304,30 @@ async def process_queue(chat_id, user_id, context):
                 except Exception:
                     pass
 
-                # ✅ 3 ملفات dark
+                # ✅ 3 ملفات dark — الاسم يتغير حسب flag
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
                             continue
+
                         safe_domain = "".join(c for c in domain.lower() if c.isalnum() or c in ".-_")[:40]
-                        filename = f"{dark['name']} - {safe_domain}.dark"
+
+                        # ✅ الاسم: {name}_{flag} - {domain}.dark
+                        display_name = f"{dark['name']}_{flag}"
+                        filename = f"{display_name} - {safe_domain}.dark"
+
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
                         bio.seek(0)
+
                         await context.bot.send_document(
-                            chat_id=chat_id, document=bio, filename=filename,
-                            caption=f"✅ {dark['name']}",
+                            chat_id=chat_id,
+                            document=bio,
+                            filename=filename,
+                            caption=f"✅ {display_name}",
                         )
-                        log.info(f"✅ [{idx}/3] {dark['name']}")
+                        log.info(f"✅ [{idx}/3] {display_name}")
                     except Exception as e:
                         log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
 
