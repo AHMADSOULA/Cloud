@@ -1,17 +1,55 @@
-WELCOME = """
-👋 *مرحباً بك في Qwiklabs → Cloud Run*
+WELCOME_ADMIN = """
+👋 *مرحباً بك يا ADMIN*
 
-📌 *طريقة الاستعمال:*
-1. افتح Google Skills واختر Lab
-2. انسخ رابط SSO
-3. أرسل الرابط هنا
-4. البوت سيدخل تلقائياً وينشر خدمة Cloud Run
+🚀 *البوت جاهز للاستعمال*
 
-⚠️ الرابط صالح 5 ساعات فقط.
+📌 *Labs المتوفرة:*
+
+🇧🇪 *Lab 🇧🇪 (بلجيكا):*
+https://www.skills.google/focuses/19372?parent=catalog
+
+🇺🇸 *Lab 🇺🇸 (أمريكا):*
+https://www.skills.google/focuses/33353?parent=catalog
+
+━━━━━━━━━━━━━━━━━━━━
+✅ *يرجى اختيار رابط وإنشاء SSO وإرساله*
+"""
+
+WELCOME_USER = """
+👋 *مرحباً بك*
+
+🚀 *البوت خاص VIP*
+
+📌 *Labs المتوفرة:*
+
+🇧🇪 *Lab 🇧🇪 (بلجيكا):*
+https://www.skills.google/focuses/19372?parent=catalog
+
+🇺🇸 *Lab 🇺🇸 (أمريكا):*
+https://www.skills.google/focuses/33353?parent=catalog
+
+━━━━━━━━━━━━━━━━━━━━
+🔒 *للحصول على صلاحية:*
+أرسل طلبك للـ ADMIN عبر `/request`
+
+⏳ بعد الموافقة، رايح تقدر تستعمل البوت.
+"""
+
+WELCOME_PENDING = """
+👋 *مرحباً بك*
+
+✅ *تم استلام طلبك*
+
+⏳ *رايح نراجعو ونفعلو حسابك قريباً*
+
+📌 *Labs المتوفرة:*
+
+🇧🇪 *Lab 🇧🇪 (بلجيكا):*
+https://www.skills.google/focuses/19372?parent=catalog
+
+🇺🇸 *Lab 🇺🇸 (أمريكا):*
+https://www.skills.google/focuses/33353?parent=catalog
 """
 
 PROCESSING = "⏳ جاري المعالجة..."
-
 NO_URL = "⚠️ أرسل رابط SSO صحيح."
-
-FAILED = "❌ *فشل*\n\n{error}"
