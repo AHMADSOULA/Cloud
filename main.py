@@ -3,7 +3,6 @@ from config import config
 from bot import handlers
 from database.db import init_db
 from utils.logger import get_logger
-from utils.helpers import extract_urls
 
 log = get_logger("Main")
 
@@ -14,17 +13,16 @@ async def post_init(app):
 
 
 async def route_text(update, context):
+    from utils.helpers import extract_urls
     from database import db
 
     text = update.message.text or ""
-    user = update.effective_user
 
-    # ✅ 1. رابط → handle_url
     if extract_urls(text):
         await handlers.handle_url(update, context)
         return
 
-    # ✅ 2. session → كلمة سر
+    user = update.effective_user
     session = await db.get_session(user.id)
     if session and session.get("state") == "waiting_password":
         await handlers.handle_password(update, context)
