@@ -197,7 +197,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_full_sso_url(sso_url):
         num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
+        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
         asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
         return
 
@@ -213,7 +213,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
+    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
@@ -249,7 +249,7 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
+    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
@@ -265,6 +265,7 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
+            # ✅ رسالة وحدة تتغير
             msg = await context.bot.send_message(chat_id=chat_id, text="🚀 جاري التنفيذ... [0/8]")
 
             browser = StealthBrowser()
@@ -279,50 +280,44 @@ async def process_queue(chat_id, user_id, context):
                     user_tag=job["user_tag"],
                 )
 
-                # ✅ إذا فشل أي step — نبعثو رسالة + نحبسو
+                # ❌ فشل
                 if not result.get("success"):
-                    error = result.get("error", "unknown")
-                    message = result.get("message", "فشل غير معروف")
-                    log.warning(f"❌ {error}: {message}")
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=(
-                            f"❌ *توقفنا*\n\n"
-                            f"📋 *السبب:*\n{message}\n\n"
-                            f"📸 شوف الصورة فوق"
-                        ),
-                        parse_mode=ParseMode.MARKDOWN,
-                    )
-                    # ✅ نحبسو — ما نبعثوش ملفات
+                    message = result.get("message", "فشل")
+                    try:
+                        await msg.edit_text(f"❌ توقفنا\n\n📋 {message}")
+                    except Exception:
+                        pass
                     return
 
-                # ✅ النجاح
+                # ✅ نجح
                 domain = result["domain"]
-                log.info(f"✅ Domain: {domain}")
+                final_url = result["final_url"]
+                flag = result.get("flag", "🇺🇸")
+
+                # ✅ رسالة وحدة: رابط run.app
+                try:
+                    await msg.edit_text(
+                        f"✅ *تم النشر!*\n\n"
+                        f"🌐 *رابط run.app:*\n`{final_url}`\n\n"
+                        f"🌍 *Region:* {flag}",
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                except Exception:
+                    pass
 
                 # ✅ 3 ملفات dark
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
-                            log.error(f"❌ [{idx}/3] build فشل")
                             continue
-
-                        safe_domain = "".join(
-                            c for c in domain.lower()
-                            if c.isalnum() or c in ".-_"
-                        )[:40]
-
+                        safe_domain = "".join(c for c in domain.lower() if c.isalnum() or c in ".-_")[:40]
                         filename = f"{dark['name']} - {safe_domain}.dark"
-
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
                         bio.seek(0)
-
                         await context.bot.send_document(
-                            chat_id=chat_id,
-                            document=bio,
-                            filename=filename,
+                            chat_id=chat_id, document=bio, filename=filename,
                             caption=f"✅ {dark['name']}",
                         )
                         log.info(f"✅ [{idx}/3] {dark['name']}")
