@@ -13,7 +13,7 @@ from utils.helpers import extract_urls
 from utils.logger import get_logger
 from config import config
 from automation.browser import StealthBrowser
-from automation.sso_flow import run_sso_flow
+from automation.sso_flow import run_sso_flow, extract_email_from_url, extract_password_from_url
 
 log = get_logger("Handlers")
 
@@ -63,7 +63,7 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# 3 ملفات Dark (بلا flag — الـ flag يتزاد في process_queue)
+# 3 ملفات DarkTunnel (بلا flag)
 # ═══════════════════════════════════════════
 
 DARK_FILES = [
@@ -93,6 +93,7 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         raw_b64 = _b64_pad(raw_b64)
         decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
         data = json.loads(decoded)
+
         v2ray = data.get("vlessTunnelConfig", {}).get("v2rayConfig")
         if v2ray and "wsHeaderHost" not in v2ray:
             v2ray["wsHeaderHost"] = new_host
@@ -106,6 +107,7 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
                     stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
                 elif isinstance(cur, list):
                     stack.extend(v for v in cur if isinstance(v, (dict, list)))
+
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         new_b64 = base64.b64encode(raw).decode("utf-8")
         return "darktunnel://" + new_b64
@@ -164,15 +166,19 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def is_full_sso_url(url: str) -> bool:
     u = (url or "").lower()
-    if "skills.google/google_sso" in u: return True
-    if "token=" in u: return True
-    if "password=" in u: return True
+    if "skills.google/google_sso" in u:
+        return True
+    if "token=" in u:
+        return True
+    if "password=" in u:
+        return True
     return False
 
 
 def is_direct_addsession_url(url: str) -> bool:
     u = (url or "").lower()
-    if "accounts.google.com/addsession" in u and "skills.google" not in u: return True
+    if "accounts.google.com/addsession" in u and "skills.google" not in u:
+        return True
     return False
 
 
@@ -184,6 +190,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     urls = extract_urls(text)
     if not urls:
+        await update.message.reply_text(messages.NO_URL)
         return
     sso_url = urls[0]
     user = update.effective_user
@@ -196,19 +203,24 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"🔗 URL: {sso_url[:150]}")
 
     if is_full_sso_url(sso_url):
+        log.info("✅ SSO كامل")
         num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
         await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
         asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
         return
 
     if is_direct_addsession_url(sso_url):
-        from automation.sso_flow import extract_email_from_url
         email = extract_email_from_url(sso_url)
         if email:
             await db.set_session(user_id=user.id, sso_url=sso_url, state="waiting_password")
             await update.message.reply_text(
                 f"📧 لقينا الإيميل:\n`{email}`\n\n🔑 *أرسل كلمة السر باش نكملو:*",
                 parse_mode=ParseMode.MARKDOWN,
+            )
+            return
+        else:
+            await update.message.reply_text(
+                "⚠️ ما قدرناش نستخرجو الإيميل من الرابط."
             )
             return
 
@@ -254,7 +266,7 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# process_queue
+# process_queue — مع flag في اسم الملف
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -279,39 +291,23 @@ async def process_queue(chat_id, user_id, context):
                     user_tag=job["user_tag"],
                 )
 
-                # ❌ فشل
-                if not result.get("success"):
-                    message = result.get("message", "فشل")
-                    try:
-                        await msg.edit_text(f"❌ توقفنا\n\n📋 {message}")
-                    except Exception:
-                        pass
-                    return
-
-                # ✅ نجح
                 domain = result["domain"]
-                final_url = result["final_url"]
                 flag = result.get("flag", "🇺🇸")
+                log.info(f"✅ Domain: {domain} — flag={flag}")
 
-                # ✅ رسالة وحدة: رابط run.app
-                try:
-                    await msg.edit_text(
-                        f"✅ *تم النشر!*\n\n"
-                        f"🌐 *رابط run.app:*\n`{final_url}`\n\n"
-                        f"🌍 *Region:* {flag}",
-                        parse_mode=ParseMode.MARKDOWN,
-                    )
-                except Exception:
-                    pass
-
-                # ✅ 3 ملفات dark — الاسم يتغير حسب flag
+                # ✅ 3 ملفات dark — الاسم حسب flag
+                log.info(f"🔵 نبعثو {len(DARK_FILES)} ملفات dark")
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
+                            log.error(f"❌ [{idx}/3] build فشل")
                             continue
 
-                        safe_domain = "".join(c for c in domain.lower() if c.isalnum() or c in ".-_")[:40]
+                        safe_domain = "".join(
+                            c for c in domain.lower()
+                            if c.isalnum() or c in ".-_"
+                        )[:40]
 
                         # ✅ الاسم: {name}_{flag} - {domain}.dark
                         display_name = f"{dark['name']}_{flag}"
