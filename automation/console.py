@@ -1,6 +1,6 @@
 """
 automation/console.py
-كل خطوات Google Cloud Console — سريع جدا + region تلقائي
+كل خطوات Google Cloud Console
 """
 import asyncio
 from playwright.async_api import expect
@@ -19,11 +19,11 @@ class CloudConsole:
         if not self.sender:
             return
         try:
-            path = f"/tmp/shot_{int(asyncio.get_event_loop().time()*1000)}.png"
+            path = f"/tmp/err_{int(asyncio.get_event_loop().time()*1000)}.png"
             await page.screenshot(path=path, full_page=False, timeout=8000)
             with open(path, "rb") as f:
                 try:
-                    await self.sender.reply_photo(photo=f, caption=caption[:1000])
+                    await self.sender.reply_photo(photo=f, caption=f"❌ {caption}"[:1000])
                 except Exception:
                     pass
             import os
@@ -40,31 +40,23 @@ class CloudConsole:
 
     async def step1_welcome_screen(self, page):
         log.info("🚀 step1")
-        await page.wait_for_timeout(1200)
 
         try:
-            is_tos = await page.evaluate("""
-                () => {
-                    const url = window.location.href.toLowerCase();
-                    if (url.includes('workspacetermsofservice') || url.includes('speedbump')) return true;
-                    const text = (document.body.innerText || '').toLowerCase();
-                    if (text.includes('welcome to your new account')) return true;
-                    for (const el of document.querySelectorAll('button, [role="button"]')) {
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t.includes('i understand')) return true;
-                    }
-                    return false;
-                }
-            """)
+            await page.wait_for_load_state("networkidle", timeout=10000)
         except Exception:
-            return
-
-        if not is_tos:
-            return
+            pass
+        await page.wait_for_timeout(1500)
 
         try:
             await page.keyboard.press("Enter")
+        except Exception:
+            pass
+
+        try:
+            button = page.locator("text='I understand'")
+            if await button.is_visible(timeout=3000):
+                await button.click()
+                log.info("✅ I understand")
         except Exception:
             pass
 
@@ -86,8 +78,6 @@ class CloudConsole:
         except Exception:
             pass
 
-        await page.wait_for_timeout(800)
-
     # ═══════════════════════════════════════
     # STEP 2
     # ═══════════════════════════════════════
@@ -95,47 +85,64 @@ class CloudConsole:
     async def step2_terms_dialog(self, page):
         log.info("🚀 step2")
 
-        has_dialog = False
-        for _ in range(4):
-            try:
-                has_dialog = await page.evaluate("""
-                    () => {
-                        for (const el of document.querySelectorAll('[role="dialog"], md-dialog, mat-dialog-container, .cdk-overlay-pane')) {
-                            if (el.offsetParent === null) continue;
-                            const t = (el.innerText || '').toLowerCase();
-                            if (t.includes('terms of service') || t.includes('i agree')) return true;
-                        }
-                        return false;
-                    }
-                """)
-                if has_dialog:
-                    break
-            except Exception:
-                pass
-            await page.wait_for_timeout(500)
-
-        if not has_dialog:
-            return
+        agree_btn = page.get_by_role("button", name="Agree and continue")
 
         try:
-            await page.evaluate("""
-                () => {
-                    for (const el of document.querySelectorAll('mat-checkbox, [role="checkbox"], input[type="checkbox"], .mdc-checkbox')) {
-                        if (el.offsetParent === null) continue;
-                        try { el.click(); const i = el.querySelector('input'); if (i) i.click(); } catch (e) {}
-                    }
-                    for (const el of document.querySelectorAll('button, [role="button"]')) {
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t.includes('agree and continue') || t === 'agree') {
-                            try { el.disabled = false; el.click(); } catch (e) {}
+            await agree_btn.wait_for(state="visible", timeout=8000)
+            log.info("✅ Agree ظهر")
+
+            checkboxes = page.get_by_role("checkbox")
+            try:
+                cnt = await checkboxes.count()
+                if cnt >= 2:
+                    await checkboxes.nth(0).click()
+                    await asyncio.sleep(0.5)
+                    await checkboxes.nth(1).click()
+                elif cnt == 1:
+                    await checkboxes.nth(0).click()
+            except Exception:
+                pass
+
+            try:
+                await agree_btn.click()
+            except Exception:
+                await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            if (t.includes('agree and continue')) {
+                                try { el.disabled = false; el.click(); } catch (e) {}
+                            }
                         }
                     }
-                }
-            """)
-        except Exception:
-            pass
+                """)
 
-        await page.wait_for_timeout(1200)
+            await page.wait_for_timeout(1500)
+        except Exception as e:
+            log.warning(f"⚠️ Dialog: {e}")
+            try:
+                await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('mat-checkbox, [role="checkbox"], input[type="checkbox"]')) {
+                            if (el.offsetParent === null) continue;
+                            try { el.click(); } catch (e) {}
+                        }
+                    }
+                """)
+                await asyncio.sleep(1)
+                await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('button, [role="button"]')) {
+                            const t = (el.innerText || '').trim().toLowerCase();
+                            if (t.includes('agree and continue')) {
+                                try { el.disabled = false; el.click(); } catch (e) {}
+                            }
+                        }
+                    }
+                """)
+                await asyncio.sleep(1)
+            except Exception:
+                pass
 
     # ═══════════════════════════════════════
     # STEP 3
@@ -148,46 +155,35 @@ class CloudConsole:
             f"https://console.cloud.google.com/apis/library/"
             f"run.googleapis.com?project={project_id}&authuser={authuser}"
         )
-
-        try:
-            await page.goto(api_url, wait_until="domcontentloaded", timeout=20000)
-        except Exception as e:
-            raise RuntimeError(f"goto: {e}")
-
-        await page.wait_for_timeout(1500)
+        await page.goto(api_url, wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(2000)
 
         try:
             if "accounts.google.com" in page.url.lower():
+                log.warning("⚠️ sign in — نتجاوزو")
                 return
         except Exception:
             pass
 
-        clicked = None
-        for _ in range(3):
-            try:
-                clicked = await page.evaluate("""
-                    () => {
-                        for (const el of document.querySelectorAll('button, [role="button"]')) {
-                            if (el.offsetParent === null) continue;
-                            const t = (el.innerText || '').trim().toLowerCase();
-                            if (t === 'enable' || t === 'manage') {
-                                try { el.click(); return t; } catch (e) {}
-                            }
-                        }
-                        return null;
-                    }
-                """)
-                if clicked:
-                    break
-            except Exception:
-                pass
-            await page.wait_for_timeout(400)
+        enable_btn = page.get_by_role("button", name="Enable")
+        manage_btn = page.get_by_role("button", name="Manage")
+        disable_btn = page.get_by_text("Disable API")
 
-        if clicked:
-            await page.wait_for_timeout(1500)
+        try:
+            await expect(enable_btn.or_(manage_btn)).to_be_visible(timeout=10000)
+            if await enable_btn.is_visible():
+                await enable_btn.click()
+                try:
+                    await expect(manage_btn.or_(disable_btn)).to_be_visible(timeout=45000)
+                except Exception:
+                    pass
+            elif await manage_btn.is_visible():
+                log.info("ℹ️ API مفعّل")
+        except Exception as e:
+            log.warning(f"⚠️ step3: {e}")
 
     # ═══════════════════════════════════════
-    # STEP 4
+    # STEP 4 — مع region
     # ═══════════════════════════════════════
 
     async def step4_create_cloud_run(self, page, project_id, authuser, image, region="us-central1"):
@@ -197,80 +193,64 @@ class CloudConsole:
         )
         log.info(f"🌐 step4 — region={region}")
 
+        await page.goto(run_url, wait_until="domcontentloaded", timeout=60000)
+        await page.wait_for_timeout(5000)
+
+        image_found = False
         try:
-            await page.goto(run_url, wait_until="domcontentloaded", timeout=45000)
+            label = page.get_by_text("Container Image URL").first
+            await label.click(timeout=10000)
+            image_found = True
         except Exception:
             try:
-                await page.goto(run_url, wait_until="commit", timeout=45000)
+                clicked = await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('*')) {
+                            const t = (el.innerText || '').trim();
+                            if (t.includes('Container Image URL') && t.length < 100) {
+                                try { el.click(); return 'ok'; } catch (e) {}
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                if clicked:
+                    image_found = True
             except Exception:
                 pass
 
-        try:
-            await page.wait_for_selector('text="Container Image URL"', timeout=20000)
-        except Exception:
-            pass
-
-        await page.wait_for_timeout(1200)
-
-        try:
-            label = page.get_by_text("Container Image URL").first
-            await label.click(timeout=5000)
-            await page.wait_for_timeout(200)
-            await page.keyboard.type(image, delay=20)
-        except Exception:
+        if not image_found:
             try:
-                await page.keyboard.type(image, delay=20)
+                inp = page.locator('input[type="text"]').first
+                await inp.click(timeout=5000)
             except Exception as e:
-                raise RuntimeError(f"فشل: {e}")
+                raise RuntimeError(f"فشل حقل: {e}")
 
-        await page.wait_for_timeout(800)
+        await page.wait_for_timeout(500)
+        await page.keyboard.type(image, delay=30)
 
-        try:
-            region_current = await page.evaluate("""
-                () => {
-                    for (const el of document.querySelectorAll('input[aria-label*="Region" i], [role="combobox"][aria-label*="Region" i]')) {
-                        if (el.offsetParent === null) continue;
-                        return el.value || '';
-                    }
-                    return null;
-                }
-            """)
-            if not region_current or region not in (region_current or ""):
-                try:
-                    inp = page.locator('input[aria-label*="Region" i], [role="combobox"][aria-label*="Region" i]').first
-                    if await inp.count() > 0:
-                        await inp.click()
-                        await page.wait_for_timeout(400)
-                        await page.keyboard.press("Control+A")
-                        await page.keyboard.type(region, delay=30)
-                        await page.wait_for_timeout(600)
-                        await page.keyboard.press("Enter")
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        await page.wait_for_timeout(800)
+        await page.wait_for_timeout(2000)
 
         try:
-            await page.get_by_role("radio", name="Allow public access").click(timeout=5000)
+            await page.get_by_role("radio", name="Allow public access").click(timeout=8000)
         except Exception:
             pass
         try:
-            await page.get_by_role("radio", name="Instance-based").click(timeout=5000)
+            await page.get_by_role("radio", name="Instance-based").click(timeout=8000)
         except Exception:
             pass
         try:
-            await page.get_by_role("button", name="Hide").click(timeout=1200)
+            await page.get_by_role("button", name="Hide").click(timeout=1500)
         except Exception:
             pass
 
         await page.keyboard.press("End")
-        await page.wait_for_timeout(400)
+        await page.wait_for_timeout(800)
 
         try:
             create_btn = page.get_by_role("button", name="Create")
-            await create_btn.click(force=True, timeout=5000)
+            await create_btn.click(force=True, timeout=8000)
+            log.info("✅ Create")
         except Exception as e:
             try:
                 clicked = await page.evaluate("""
@@ -297,7 +277,15 @@ class CloudConsole:
     async def step5_get_deployed_url(self, page):
         log.info("⏳ step5")
 
-        for i in range(60):
+        link_locator = page.locator('a[href*="run.app"]')
+        try:
+            await link_locator.wait_for(state="visible", timeout=60000)
+            final_url = await link_locator.get_attribute("href")
+            return final_url
+        except Exception:
+            pass
+
+        for i in range(30):
             try:
                 url = await page.evaluate("""
                     () => {
@@ -316,6 +304,6 @@ class CloudConsole:
                     return url
             except Exception:
                 pass
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(3000)
 
         raise RuntimeError("ما لقيناش رابط run.app")
