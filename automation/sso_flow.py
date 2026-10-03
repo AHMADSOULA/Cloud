@@ -1,8 +1,9 @@
 """
 automation/sso_flow.py
-تنسيق العملية — سريع + region تلقائي + رسالة وحدة
+تنسيق العملية — فحص سريع لـ SSO منتهي + توقف
 """
 import re
+import asyncio
 from urllib.parse import urlparse, parse_qs
 
 from automation.console import CloudConsole
@@ -64,6 +65,58 @@ def _has_password(url: str) -> bool:
     return "password=" in u
 
 
+async def _check_sso_state(page) -> dict:
+    """
+    ✅ فحص سريع للصفحة بعد الفتح:
+    - "expired": SSO منتهي
+    - "password": صفحة Sign in مع إيميل (حساب متوفر)
+    - "unknown": ما نعرفش
+    """
+    try:
+        state = await page.evaluate("""
+            () => {
+                const url = window.location.href.toLowerCase();
+                const body = (document.body.innerText || '').toLowerCase();
+
+                // 1. SSO منتهي — الصفحة كتقول "expired" أو "invalid" أو كترجع لـ signin
+                if (body.includes('session expired') ||
+                    body.includes('expired') ||
+                    body.includes('no longer valid') ||
+                    body.includes('invalid') ||
+                    body.includes('sign in to continue') ||
+                    body.includes('رابط غير صالح')) {
+                    return 'expired';
+                }
+
+                // 2. إذا URL فيه accounts.google.com/signin → SSO ما خدمش
+                if (url.includes('accounts.google.com/signin') && !url.includes('addsession')) {
+                    return 'expired';
+                }
+
+                // 3. صفحة Sign in — كاين input email + كلمة سر
+                let has_email_input = false;
+                let has_pwd_input = false;
+                for (const el of document.querySelectorAll('input[type="email"], input[name="identifier"]')) {
+                    if (el.offsetParent !== null) has_email_input = true;
+                }
+                for (const el of document.querySelectorAll('input[type="password"]')) {
+                    if (el.offsetParent !== null) has_pwd_input = true;
+                }
+
+                // صفحة Email → كاين إيميل
+                if (has_email_input) return 'email_page';
+
+                // صفحة Password → كاين إيميل + كلمة سر = حساب متوفر
+                if (has_pwd_input) return 'password';
+
+                return 'unknown';
+            }
+        """)
+        return {"state": state}
+    except Exception as e:
+        return {"state": "error", "error": str(e)[:200]}
+
+
 async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag="@user") -> dict:
     project_id = extract_project_id(sso_url)
     if not project_id:
@@ -83,7 +136,6 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
-    # ✅ رسالة وحدة تتغير
     status_msg = None
     if sender:
         try:
@@ -108,31 +160,61 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         except Exception:
             await page.goto(sso_url, wait_until="commit", timeout=45000)
 
-        await page.wait_for_timeout(1500)
-        try:
-            expired = await page.evaluate("""
-                () => {
-                    const t = (document.body.innerText || '').toLowerCase();
-                    if (t.includes('session expired') || t.includes('expired') ||
-                        t.includes('invalid') || t.includes('no longer valid')) return true;
-                    return false;
-                }
-            """)
-            if expired:
-                await console._shot(page, "❌ SSO منتهي")
-                return {"success": False, "error": "expired_sso", "message": "SSO منتهي"}
-        except Exception:
-            pass
+        # ✅ 2. فحص سريع — 3 محاولات × 1s
+        await update_status(2, "فحص SSO")
+        state = None
+        for i in range(3):
+            await page.wait_for_timeout(1000)
+            r = await _check_sso_state(page)
+            state = r.get("state")
+            if state in ("expired", "password", "email_page"):
+                break
 
-        # 2
-        await update_status(2, "TOS")
+        log.info(f"🔍 State: {state}")
+
+        # ❌ 3. SSO منتهي → صور + توقف
+        if state == "expired":
+            log.warning("⚠️ SSO منتهي")
+            await console._shot(page, "❌ SSO منتهي — توقفنا")
+            return {
+                "success": False,
+                "error": "expired_sso",
+                "message": "SSO منتهي أو غير صالح — الرابط ما بقاش يخدم",
+            }
+
+        # ✅ 4. صفحة Email → البوت يكمل عادي
+        if state == "email_page":
+            log.info("✅ صفحة Email — نكملو")
+            # نتخطوها — البوت عندو credentials من URL
+
+        # ✅ 5. صفحة Password → الحساب متوفر
+        if state == "password":
+            log.info("✅ صفحة Password — الحساب متوفر")
+            # يكمل عادي
+
+        # ✅ 6. نتحققو واش كاين إيميل في URL (يعني الحساب متوفر)
+        email_from_url = extract_email_from_url(sso_url)
+        log.info(f"📧 Email في URL: {email_from_url}")
+
+        # إذا ما كاينش إيميل في URL وما كاينش صفحة → SSO منتهي
+        if not email_from_url and state in ("unknown", "error"):
+            log.warning("⚠️ ما لقيناش إيميل — SSO منتهي")
+            await console._shot(page, "❌ SSO منتهي")
+            return {
+                "success": False,
+                "error": "expired_sso",
+                "message": "SSO منتهي — ما لقيناش إيميل",
+            }
+
+        # ✅ 7. TOS
+        await update_status(3, "TOS")
         try:
             await console.step1_welcome_screen(page)
         except Exception as e:
             log.warning(f"⚠️ step1: {e}")
 
-        # 3
-        await update_status(3, "Terms Dialog")
+        # ✅ 8. Terms Dialog
+        await update_status(4, "Terms Dialog")
         try:
             await console.step2_terms_dialog(page)
         except Exception as e:
@@ -147,30 +229,26 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # 4
-        await update_status(4, "تفعيل API")
+        # 9. Enable API
+        await update_status(5, "تفعيل API")
         try:
             await console.step3_enable_api(page, project_id, authuser)
         except Exception as e:
             log.warning(f"⚠️ step3: {e}")
 
-        # 5
-        await update_status(5, f"إنشاء Cloud Run {flag}")
+        # 10. Create Cloud Run
+        await update_status(6, f"إنشاء Cloud Run {flag}")
         try:
             await console.step4_create_cloud_run(page, project_id, authuser, image, region=region)
         except Exception as e:
             await console._shot(page, "❌ step4 فشل")
             return {"success": False, "error": "step4_failed", "message": str(e)[:200]}
 
-        # 6
-        await update_status(6, "تعبئة")
-        await page.wait_for_timeout(400)
-
-        # 7
+        # 11
         await update_status(7, "Create")
         await page.wait_for_timeout(400)
 
-        # 8
+        # 12. انتظار الرابط
         await update_status(8, "انتظار الرابط")
         try:
             final_url = await console.step5_get_deployed_url(page)
