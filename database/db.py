@@ -7,7 +7,6 @@ os.makedirs(os.path.dirname(config.DB_PATH) or ".", exist_ok=True)
 
 async def init_db():
     async with aiosqlite.connect(config.DB_PATH) as db:
-        # ✅ جدول jobs
         await db.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,8 +18,6 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
-        # ✅ جدول users
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -28,8 +25,6 @@ async def init_db():
                 first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
-        # ✅ جدول sessions (فيه sso_url + state)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 user_id INTEGER PRIMARY KEY,
@@ -39,20 +34,12 @@ async def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
         await db.commit()
 
 
-# ═══════════════════════════════════════════
-# JOBs
-# ═══════════════════════════════════════════
-
 async def add_job(user_id: int, sso_url: str) -> int:
     async with aiosqlite.connect(config.DB_PATH) as db:
-        cur = await db.execute(
-            "INSERT INTO jobs (user_id, sso_url) VALUES (?, ?)",
-            (user_id, sso_url)
-        )
+        cur = await db.execute("INSERT INTO jobs (user_id, sso_url) VALUES (?, ?)", (user_id, sso_url))
         await db.commit()
         return cur.lastrowid
 
@@ -75,10 +62,6 @@ async def get_user_jobs(user_id: int, limit: int = 10):
         return await cur.fetchall()
 
 
-# ═══════════════════════════════════════════
-# USERS
-# ═══════════════════════════════════════════
-
 async def register_user(user_id: int, username: str):
     async with aiosqlite.connect(config.DB_PATH) as db:
         await db.execute(
@@ -88,15 +71,10 @@ async def register_user(user_id: int, username: str):
         await db.commit()
 
 
-# ═══════════════════════════════════════════
-# SESSIONS
-# ═══════════════════════════════════════════
-
 async def set_session(user_id: int, job_id: int = None, sso_url: str = None, state: str = None):
     async with aiosqlite.connect(config.DB_PATH) as db:
         cur = await db.execute("SELECT user_id FROM sessions WHERE user_id=?", (user_id,))
         exists = await cur.fetchone()
-
         if exists:
             updates, params = [], []
             for field, val in [("job_id", job_id), ("sso_url", sso_url), ("state", state)]:
