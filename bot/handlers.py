@@ -278,21 +278,51 @@ async def process_queue(chat_id, user_id, context):
                     sender=msg,
                     user_tag=job["user_tag"],
                 )
+
+                # ✅ إذا فشل أي step — نبعثو رسالة + نحبسو
+                if not result.get("success"):
+                    error = result.get("error", "unknown")
+                    message = result.get("message", "فشل غير معروف")
+                    log.warning(f"❌ {error}: {message}")
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=(
+                            f"❌ *توقفنا*\n\n"
+                            f"📋 *السبب:*\n{message}\n\n"
+                            f"📸 شوف الصورة فوق"
+                        ),
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                    # ✅ نحبسو — ما نبعثوش ملفات
+                    return
+
+                # ✅ النجاح
                 domain = result["domain"]
                 log.info(f"✅ Domain: {domain}")
 
+                # ✅ 3 ملفات dark
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
+                            log.error(f"❌ [{idx}/3] build فشل")
                             continue
-                        safe_domain = "".join(c for c in domain.lower() if c.isalnum() or c in ".-_")[:40]
+
+                        safe_domain = "".join(
+                            c for c in domain.lower()
+                            if c.isalnum() or c in ".-_"
+                        )[:40]
+
                         filename = f"{dark['name']} - {safe_domain}.dark"
+
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
                         bio.seek(0)
+
                         await context.bot.send_document(
-                            chat_id=chat_id, document=bio, filename=filename,
+                            chat_id=chat_id,
+                            document=bio,
+                            filename=filename,
                             caption=f"✅ {dark['name']}",
                         )
                         log.info(f"✅ [{idx}/3] {dark['name']}")
