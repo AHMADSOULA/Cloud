@@ -9,6 +9,7 @@ import json
 import os
 import random
 import string
+import time
 import requests
 from playwright.async_api import expect
 from utils.logger import get_logger
@@ -54,7 +55,7 @@ def solve_recaptcha_sctg(sitekey: str, pageurl: str) -> str:
         log.info(f"✅ SCTG ID: {captcha_id}")
 
         for i in range(60):
-            asyncio.sleep(5)
+            time.sleep(5)
             params = {
                 "key": SCTG_API_KEY,
                 "action": "get",
@@ -165,15 +166,12 @@ class SkillsRegister:
 
             # ✅ 5. نحلو CAPTCHA
             try:
-                # نلقاو sitekey
                 sitekey = await page.evaluate("""
                     () => {
-                        // reCAPTCHA v2
                         const recaptcha = document.querySelector('.g-recaptcha, [data-sitekey]');
                         if (recaptcha) {
                             return recaptcha.getAttribute('data-sitekey');
                         }
-                        // iframe
                         const iframe = document.querySelector('iframe[src*="recaptcha"]');
                         if (iframe) {
                             const src = iframe.src || '';
@@ -188,19 +186,18 @@ class SkillsRegister:
                     log.info(f"🔑 sitekey: {sitekey[:40]}...")
                     token = solve_recaptcha_sctg(sitekey, "https://www.skills.google/")
                     if token:
-                        # نحطو التوكن في g-recaptcha-response
-                        await page.evaluate(f"""
-                            (token) => {{
+                        await page.evaluate("""
+                            (token) => {
                                 let el = document.getElementById('g-recaptcha-response');
-                                if (!el) {{
+                                if (!el) {
                                     el = document.createElement('textarea');
                                     el.id = 'g-recaptcha-response';
                                     el.name = 'g-recaptcha-response';
                                     el.style.display = 'none';
                                     document.body.appendChild(el);
-                                }}
+                                }
                                 el.value = token;
-                            }}
+                            }
                         """, token)
                         log.info("✅ CAPTCHA token set")
             except Exception as e:
@@ -257,7 +254,6 @@ class SkillsRegister:
             except Exception:
                 pass
 
-        # fallback: placeholder
         for label in labels:
             try:
                 inp = page.locator(f'input[placeholder*="{label}" i]').first
