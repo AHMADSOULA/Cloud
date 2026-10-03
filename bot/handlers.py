@@ -2,6 +2,8 @@ import asyncio
 import io
 import base64
 import json
+import random
+import string
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -13,13 +15,14 @@ from utils.helpers import extract_urls
 from utils.logger import get_logger
 from config import config
 from automation.browser import StealthBrowser
-from automation.sso_flow import run_sso_flow, extract_email_from_url, extract_password_from_url
+from automation.sso_flow import run_sso_flow
+from automation.skills_register import SkillsRegister
 
 log = get_logger("Handlers")
 
 
 # ═══════════════════════════════════════════
-# طابور
+# طابور SSO
 # ═══════════════════════════════════════════
 
 class JobQueue:
@@ -63,7 +66,7 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# 3 ملفات DarkTunnel
+# 3 ملفات Dark
 # ═══════════════════════════════════════════
 
 DARK_FILES = [
@@ -93,7 +96,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         raw_b64 = _b64_pad(raw_b64)
         decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
         data = json.loads(decoded)
-
         v2ray = data.get("vlessTunnelConfig", {}).get("v2rayConfig")
         if v2ray and "wsHeaderHost" not in v2ray:
             v2ray["wsHeaderHost"] = new_host
@@ -107,7 +109,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
                     stack.extend(v for v in cur.values() if isinstance(v, (dict, list)))
                 elif isinstance(cur, list):
                     stack.extend(v for v in cur if isinstance(v, (dict, list)))
-
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         new_b64 = base64.b64encode(raw).decode("utf-8")
         return "darktunnel://" + new_b64
@@ -165,7 +166,6 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════
 
 def is_full_sso_url(url: str) -> bool:
-    """SSO كامل = ما تطلبش كلمة سر"""
     u = (url or "").lower()
     if "skills.google/google_sso" in u:
         return True
@@ -177,22 +177,35 @@ def is_full_sso_url(url: str) -> bool:
 
 
 def is_direct_addsession_url(url: str) -> bool:
-    """AddSession مباشر = تطلب كلمة سر"""
     u = (url or "").lower()
     if "accounts.google.com/addsession" in u and "skills.google" not in u:
         return True
     return False
 
 
+def is_email_only(text: str) -> bool:
+    """واش الرسالة غير إيميل؟"""
+    text = (text or "").strip()
+    if "@" in text and "." in text and " " not in text:
+        if "http" not in text.lower():
+            return True
+    return False
+
+
+def generate_password() -> str:
+    """يولّد كلمة سر قوية"""
+    chars = string.ascii_letters + string.digits + "!@#$%"
+    return "".join(random.choices(chars, k=12))
+
+
 # ═══════════════════════════════════════════
-# handle_url
+# handle_url — SSO + AddSession
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text or ""
     urls = extract_urls(text)
     if not urls:
-        await update.message.reply_text(messages.NO_URL)
         return
     sso_url = urls[0]
     user = update.effective_user
@@ -202,12 +215,10 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
-
     log.info(f"🔗 URL: {sso_url[:150]}")
 
-    # ✅ 1. SSO كامل → ما تطلبش كلمة سر
+    # ✅ 1. SSO كامل → بلا كلمة سر
     if is_full_sso_url(sso_url):
-        log.info("✅ SSO كامل — بلا كلمة سر")
         num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
         await update.message.reply_text(
             f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.\n"
@@ -218,9 +229,8 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ✅ 2. AddSession مباشر → تطلب كلمة سر
     if is_direct_addsession_url(sso_url):
+        from automation.sso_flow import extract_email_from_url
         email = extract_email_from_url(sso_url)
-        log.info(f"📧 AddSession — email={email}")
-
         if email:
             await db.set_session(
                 user_id=user.id,
@@ -233,22 +243,38 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN,
             )
             return
-        else:
-            await update.message.reply_text(
-                "⚠️ ما قدرناش نستخرجو الإيميل من الرابط.\n"
-                "أرسل الرابط الكامل (skills.google/google_sso?...)"
-            )
-            return
 
-    # ✅ 3. رابط آخر → نكملو
-    log.info("ℹ️ رابط آخر")
+    # ✅ 3. رابط آخر
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
     await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
     asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
 
 
 # ═══════════════════════════════════════════
-# handle_password
+# handle_email — إيميل فقط → تسجيل حساب
+# ═══════════════════════════════════════════
+
+async def handle_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    email = (update.message.text or "").strip()
+
+    user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
+
+    await db.set_session(
+        user_id=user.id,
+        state="waiting_password_register",
+        sso_url=email,  # نخزنو الإيميل
+    )
+
+    await update.message.reply_text(
+        f"📧 الإيميل:\n`{email}`\n\n"
+        f"🔑 *أرسل كلمة السر اللي تحبها:*",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+# ═══════════════════════════════════════════
+# handle_password — كلمة السر
 # ═══════════════════════════════════════════
 
 async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,36 +285,94 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     session = await db.get_session(user.id)
-    if not session or session.get("state") != "waiting_password":
+    if not session:
         return
+
+    state = session.get("state")
 
     try:
         await update.message.delete()
     except Exception:
         pass
 
-    sso_url = session.get("sso_url")
-    if not sso_url:
-        await update.message.reply_text("❌ ما لقيناش الرابط.")
+    # ✅ حالة 1: AddSession → كلمة سر
+    if state == "waiting_password":
+        sso_url = session.get("sso_url")
+        if not sso_url:
+            await update.message.reply_text("❌ ما لقيناش الرابط.")
+            return
+        await db.clear_session(user.id)
+
+        if "Password=" not in sso_url:
+            sep = "&" if "?" in sso_url else "?"
+            sso_url = f"{sso_url}{sep}Password={password}"
+
+        user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
+        num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
+        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
+        asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
         return
 
-    await db.clear_session(user.id)
+    # ✅ حالة 2: register → كلمة سر
+    if state == "waiting_password_register":
+        email = session.get("sso_url")  # الإيميل
+        if not email:
+            await update.message.reply_text("❌ ما لقيناش الإيميل.")
+            return
+        await db.clear_session(user.id)
 
-    if "Password=" not in sso_url:
-        sep = "&" if "?" in sso_url else "?"
-        sso_url = f"{sso_url}{sep}Password={password}"
+        await update.message.reply_text(
+            f"⏳ جاري إنشاء الحساب...\n\n📧 `{email}`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
 
-    user_tag = f"@{user.username}" if user.username else f"@{user.first_name}"
-
-    num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-
-    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
-
-    asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
+        asyncio.create_task(register_account(user.id, email, password, update.effective_chat.id, context))
 
 
 # ═══════════════════════════════════════════
-# معالجة الطابور
+# register_account
+# ═══════════════════════════════════════════
+
+async def register_account(user_id, email, password, chat_id, context):
+    browser = StealthBrowser()
+    try:
+        ctx = await browser.start()
+        register = SkillsRegister(ctx, sender=None, user_tag="@user")
+
+        result = await register.register(email, password)
+
+        if result.get("success"):
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"✅ **تم إنشاء الحساب بنجاح!**\n\n"
+                    f"📧 **Email:**\n`{email}`\n\n"
+                    f"🔑 **Password:**\n`{password}`\n\n"
+                    f"🌐 **Site:**\nhttps://www.skills.google/"
+                ),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"❌ فشل إنشاء الحساب.\n\n📧 `{email}`",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+    except Exception as e:
+        log.exception("فشل التسجيل")
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ فشل: {str(e)[:400]}")
+        except Exception:
+            pass
+    finally:
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+# ═══════════════════════════════════════════
+# معالجة الطابور SSO
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -316,28 +400,19 @@ async def process_queue(chat_id, user_id, context):
                 domain = result["domain"]
                 log.info(f"✅ Domain: {domain}")
 
-                # ✅ 3 ملفات dark
-                log.info(f"🔵 نبعثو {len(DARK_FILES)} ملفات dark")
                 for idx, dark in enumerate(DARK_FILES, 1):
                     try:
-                        log.info(f"🔵 [{idx}/3] {dark['name']}")
-
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
-                            log.error(f"❌ [{idx}/3] build فشل")
                             continue
-
                         safe_domain = "".join(
                             c for c in domain.lower()
                             if c.isalnum() or c in ".-_"
                         )[:40]
-
                         filename = f"{dark['name']} - {safe_domain}.dark"
-
                         bio = io.BytesIO(new_uri.encode("utf-8"))
                         bio.name = filename
                         bio.seek(0)
-
                         await context.bot.send_document(
                             chat_id=chat_id,
                             document=bio,
@@ -363,7 +438,6 @@ async def process_queue(chat_id, user_id, context):
 
         finally:
             await queue.finish()
-
             if queue.queue_size() > 0:
                 asyncio.create_task(process_queue(chat_id, user_id, context))
 
