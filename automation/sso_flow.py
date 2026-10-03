@@ -1,6 +1,6 @@
 """
 automation/sso_flow.py
-تنسيق العملية — مع تصوير عند الفشل + توقف
+تنسيق العملية — سريع + region تلقائي + رسالة وحدة
 """
 import re
 from urllib.parse import urlparse, parse_qs
@@ -59,150 +59,136 @@ def extract_password_from_url(url: str) -> str:
     return None
 
 
+def _has_password(url: str) -> bool:
+    """واش الرابط فيه كلمة سر؟"""
+    u = (url or "").lower()
+    return "password=" in u
+
+
 async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag="@user") -> dict:
     project_id = extract_project_id(sso_url)
     if not project_id:
         raise RuntimeError("❌ Project ID ماكانش في الرابط.")
 
+    # ✅ نختارو region حسب الرابط
+    if _has_password(sso_url):
+        region = "us-central1"    # 🇺🇸 أمريكا
+        flag = "🇺🇸"
+        log.info(f"🇺🇸 Region = US (فيه كلمة سر)")
+    else:
+        region = "europe-west1"   # 🇧🇪 بلجيكا
+        flag = "🇧🇪"
+        log.info(f"🇧🇪 Region = EU (بلا كلمة سر)")
+
     log.info(f"🚀 SSO — project={project_id}")
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
-    async def report(num, text, ok=False):
-        if not sender:
+    # ✅ رسالة وحدة تتغير
+    status_msg = None
+    if sender:
+        try:
+            status_msg = await sender.reply_text(f"🚀 جاري التنفيذ... [0/8]")
+        except Exception:
+            status_msg = None
+
+    async def update_status(step, text=""):
+        if not status_msg:
             return
         try:
-            if ok:
-                await sender.reply_text(f"[{user_tag}] • {num} ✅ {text}")
-            else:
-                await sender.reply_text(f"[{user_tag}] • {num}) {text}")
+            await status_msg.edit_text(f"🚀 جاري التنفيذ... [{step}/8] {text}")
         except Exception:
             pass
 
     # ✅ صفحة وحدة
     page = await context.new_page()
     try:
-        # ═══════ 1) SSO ═══════
-        await report(1, "فتح رابط الطالب...")
+        # 1
+        await update_status(1, "فتح الرابط")
         try:
-            await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
+            await page.goto(sso_url, wait_until="domcontentloaded", timeout=45000)
         except Exception:
-            await page.goto(sso_url, wait_until="commit", timeout=60000)
-        await report(1, "", ok=True)
+            await page.goto(sso_url, wait_until="commit", timeout=45000)
 
-        # ═══════ نتحققو من الأخطاء ═══════
-        await page.wait_for_timeout(3000)
-
-        # ❌ 1. SSO منتهي؟
+        # فحص SSO منتهي
+        await page.wait_for_timeout(1500)
         try:
             expired = await page.evaluate("""
                 () => {
-                    const text = (document.body.innerText || '').toLowerCase();
-                    if (text.includes('session expired') ||
-                        text.includes('expired') ||
-                        text.includes('رابط منتهي') ||
-                        text.includes('invalid') ||
-                        text.includes('no longer valid') ||
-                        text.includes('try again')) {
-                        return true;
-                    }
-                    // link to login
-                    const url = window.location.href.toLowerCase();
-                    if (url.includes('accounts.google.com/signin') && !url.includes('addsession')) {
-                        return true;
-                    }
+                    const t = (document.body.innerText || '').toLowerCase();
+                    if (t.includes('session expired') || t.includes('expired') ||
+                        t.includes('invalid') || t.includes('no longer valid')) return true;
                     return false;
                 }
             """)
-
             if expired:
-                log.warning("⚠️ SSO منتهي")
                 await console._shot(page, "❌ SSO منتهي")
-                await report(1, "❌ SSO منتهي أو غير صالح — توقفنا", ok=False)
-                return {
-                    "success": False,
-                    "error": "expired_sso",
-                    "message": "SSO منتهي أو غير صالح",
-                    "final_url": page.url,
-                }
-        except Exception as e:
-            log.warning(f"⚠️ فحص SSO: {e}")
+                return {"success": False, "error": "expired_sso", "message": "SSO منتهي"}
+        except Exception:
+            pass
 
-        # ═══════ 2) TOS ═══════
-        await report(2, "")
+        # 2
+        await update_status(2, "TOS")
         try:
             await console.step1_welcome_screen(page)
-            await report(2, "", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step1: {e}")
-            await console._shot(page, "❌ step1 فشل")
-            await report(2, "❌ step1 فشل — توقفنا", ok=False)
-            return {"success": False, "error": "step1_failed", "message": str(e)[:200]}
 
-        # ═══════ 3) Terms Dialog ═══════
-        await report(3, "")
+        # 3
+        await update_status(3, "Terms Dialog")
         try:
             await console.step2_terms_dialog(page)
-            await report(3, "", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step2: {e}")
-            await console._shot(page, "❌ step2 فشل")
-            await report(3, "❌ step2 فشل — توقفنا", ok=False)
-            return {"success": False, "error": "step2_failed", "message": str(e)[:200]}
 
-        # ═══════ نستناو Dashboard ═══════
+        # نستناو Dashboard
         try:
-            await page.wait_for_url("**/home/dashboard**", timeout=45000)
-            log.info("✅ Dashboard")
+            await page.wait_for_url("**/home/dashboard**", timeout=30000)
         except Exception:
-            log.warning("⚠️ ما وصلناش Dashboard")
-            # ✅ نصورو + نوقف
-            await console._shot(page, "❌ ما وصلناش Dashboard")
-            await report(3, "❌ ما وصلناش Dashboard — توقفنا", ok=False)
-            return {"success": False, "error": "no_dashboard", "message": "ما وصلناش Dashboard"}
+            pass
 
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(400)
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # ═══════ 4) Enable API ═══════
-        await report(4, "تفعيل Cloud Run API...")
+        # 4
+        await update_status(4, "تفعيل API")
         try:
             await console.step3_enable_api(page, project_id, authuser)
-            await report(4, "", ok=True)
         except Exception as e:
             log.warning(f"⚠️ step3: {e}")
-            await console._shot(page, "❌ step3 فشل")
-            # ✅ نكملو — بعض المرات API مفعّل من قبل
-            await report(4, "⚠️ API ما تأكدش، نكملو...", ok=False)
 
-        # ═══════ 5) Create Cloud Run ═══════
-        await report(5, "فتح Cloud Run...")
+        # 5
+        await update_status(5, f"إنشاء Cloud Run {flag}")
         try:
-            await console.step4_create_cloud_run(page, project_id, authuser, image)
-            await report(5, "", ok=True)
+            await console.step4_create_cloud_run(page, project_id, authuser, image, region=region)
         except Exception as e:
-            log.error(f"❌ step4 فشل: {e}")
-            await console._shot(page, "❌ step4 فشل — توقفنا")
-            await report(5, "❌ step4 فشل — توقفنا", ok=False)
+            await console._shot(page, "❌ step4 فشل")
             return {"success": False, "error": "step4_failed", "message": str(e)[:200]}
 
-        # ═══════ 6) ═══════
-        await report(6, "", ok=True)
-        # ═══════ 7) ═══════
-        await report(7, "Create", ok=True)
+        # 6
+        await update_status(6, "تعبئة")
+        await page.wait_for_timeout(400)
 
-        # ═══════ 8) انتظار الرابط ═══════
-        await report(8, "انتظار رابط النشر...")
+        # 7
+        await update_status(7, "Create")
+        await page.wait_for_timeout(400)
+
+        # 8
+        await update_status(8, "انتظار الرابط")
         try:
             final_url = await console.step5_get_deployed_url(page)
             domain = extract_domain_from_service_url(final_url)
-            await report(8, f"(Domain: {domain})", ok=True)
         except Exception as e:
-            log.error(f"❌ step5 فشل: {e}")
-            await console._shot(page, "❌ step5 فشل — توقفنا")
-            await report(8, "❌ step5 فشل — توقفنا", ok=False)
+            await console._shot(page, "❌ step5 فشل")
             return {"success": False, "error": "step5_failed", "message": str(e)[:200]}
+
+        # ✅ نحذفو الرسالة
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
 
     finally:
         try:
@@ -216,4 +202,6 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         "authuser": authuser,
         "final_url": final_url,
         "domain": domain,
+        "region": region,
+        "flag": flag,
     }
