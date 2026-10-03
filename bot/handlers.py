@@ -266,7 +266,7 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# process_queue — مع flag في اسم الملف
+# process_queue — مع flag + توقف عند الفشل
 # ═══════════════════════════════════════════
 
 async def process_queue(chat_id, user_id, context):
@@ -277,6 +277,7 @@ async def process_queue(chat_id, user_id, context):
 
         job = item
         try:
+            # ✅ رسالة وحدة
             msg = await context.bot.send_message(chat_id=chat_id, text="🚀 جاري التنفيذ... [0/8]")
 
             browser = StealthBrowser()
@@ -291,9 +292,26 @@ async def process_queue(chat_id, user_id, context):
                     user_tag=job["user_tag"],
                 )
 
-                domain = result["domain"]
+                # ❌ إذا فشل — نحبسو
+                if not result.get("success"):
+                    message = result.get("message", "فشل")
+                    try:
+                        await msg.edit_text(f"❌ توقفنا\n\n{message}")
+                    except Exception:
+                        pass
+                    return
+
+                # ✅ نجح
+                domain = result.get("domain")
+                final_url = result.get("final_url")
                 flag = result.get("flag", "🇺🇸")
-                log.info(f"✅ Domain: {domain} — flag={flag}")
+
+                if not domain:
+                    try:
+                        await msg.edit_text("❌ فشل: ما لقيناش domain")
+                    except Exception:
+                        pass
+                    return
 
                 # ✅ 3 ملفات dark — الاسم حسب flag
                 log.info(f"🔵 نبعثو {len(DARK_FILES)} ملفات dark")
@@ -326,6 +344,17 @@ async def process_queue(chat_id, user_id, context):
                         log.info(f"✅ [{idx}/3] {display_name}")
                     except Exception as e:
                         log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
+
+                # ✅ تعديل الرسالة الأخيرة
+                try:
+                    await msg.edit_text(
+                        f"✅ *تم النشر!*\n\n"
+                        f"🌐 *رابط run.app:*\n`{final_url}`\n\n"
+                        f"🌍 *Region:* {flag}",
+                        parse_mode=ParseMode.MARKDOWN,
+                    )
+                except Exception:
+                    pass
 
             finally:
                 try:
