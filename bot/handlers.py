@@ -4,7 +4,7 @@ import base64
 import json
 import random
 import string
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
@@ -153,7 +153,6 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.clear_session(user.id)
 
-    # ✅ نحيدو register + browser
     for key in ("register_", "browser_reg_"):
         obj = context.bot_data.pop(f"{key}{user.id}", None)
         if obj and hasattr(obj, "close"):
@@ -161,6 +160,9 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await obj.close()
             except Exception:
                 pass
+
+    for k in ("state_reg_", "email_reg_", "pwd_reg_"):
+        context.bot_data.pop(f"{k}{user.id}", None)
 
     await update.message.reply_text("🚫 تم الإلغاء.")
 
@@ -212,9 +214,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_full_sso_url(sso_url):
         num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag)
-        await update.message.reply_text(
-            f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن."
-        )
+        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num} وسيبدأ الآن.")
         asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
         return
 
@@ -224,8 +224,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if email:
             await db.set_session(user_id=user.id, sso_url=sso_url, state="waiting_password")
             await update.message.reply_text(
-                f"📧 لقينا الإيميل:\n`{email}`\n\n"
-                f"🔑 *أرسل كلمة السر باش نكملو:*",
+                f"📧 لقينا الإيميل:\n`{email}`\n\n🔑 *أرسل كلمة السر باش نكملو:*",
                 parse_mode=ParseMode.MARKDOWN,
             )
             return
@@ -270,7 +269,6 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    # حالة 1: SSO
     if state == "waiting_password":
         sso_url = session.get("sso_url")
         if not sso_url:
@@ -286,21 +284,18 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(process_queue(update.effective_chat.id, user.id, context))
         return
 
-    # حالة 2: Register
     if state == "waiting_password_register":
         email = session.get("sso_url")
         if not email:
             await update.message.reply_text("❌ ما لقيناش الإيميل.")
             return
         await db.clear_session(user.id)
-        asyncio.create_task(
-            complete_register(user.id, email, password, update.effective_chat.id, context)
-        )
+        asyncio.create_task(complete_register(user.id, email, password, update.effective_chat.id, context))
         return
 
 
 # ═══════════════════════════════════════════
-# start_register + complete_register
+# start_register
 # ═══════════════════════════════════════════
 
 async def start_register(user_id, email, chat_id, context):
@@ -310,27 +305,39 @@ async def start_register(user_id, email, chat_id, context):
         msg = await context.bot.send_message(chat_id=chat_id, text="⏳ بدء...")
 
         register = SkillsRegister(ctx, sender=msg, user_tag="@user")
-        ok = await register.open_signin(email)
+        result = await register.open_signin(email)
+        status = result.get("status")
 
-        if not ok:
-            await context.bot.send_message(chat_id=chat_id, text="❌ ما قدرناش نكتبو الإيميل.")
-            await browser.close()
+        if status == "captcha":
+            context.bot_data[f"register_{user_id}"] = register
+            context.bot_data[f"browser_reg_{user_id}"] = browser
+            context.bot_data[f"state_reg_{user_id}"] = "captcha_after_email"
+            context.bot_data[f"email_reg_{user_id}"] = email
+
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ حليتها", callback_data=f"captcha_done:{user_id}")]
+            ])
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="🌐 *روح للرابط فوق وحل الـ CAPTCHA*\n\n✅ من بعد ما تحلها، اضغط الزر",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=kb,
+            )
             return
 
-        context.bot_data[f"register_{user_id}"] = register
-        context.bot_data[f"browser_reg_{user_id}"] = browser
+        if status == "password":
+            context.bot_data[f"register_{user_id}"] = register
+            context.bot_data[f"browser_reg_{user_id}"] = browser
+            await db.set_session(user_id=user_id, state="waiting_password_register", sso_url=email)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🔑 *أرسل كلمة السر ديال `{email}`:*",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            return
 
-        await db.set_session(
-            user_id=user_id,
-            state="waiting_password_register",
-            sso_url=email,
-        )
-
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"🔑 *أرسل كلمة السر ديال `{email}`:*",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ {result.get('message', 'خطأ')}")
+        await browser.close()
 
     except Exception as e:
         log.exception("فشل بدء التسجيل")
@@ -344,18 +351,39 @@ async def start_register(user_id, email, chat_id, context):
             pass
 
 
+# ═══════════════════════════════════════════
+# complete_register
+# ═══════════════════════════════════════════
+
 async def complete_register(user_id, email, password, chat_id, context):
     register = context.bot_data.get(f"register_{user_id}")
     browser = context.bot_data.get(f"browser_reg_{user_id}")
 
     if not register or not browser:
-        await context.bot.send_message(chat_id=chat_id, text="❌ انتهت الجلسة. أرسل الإيميل من جديد.")
+        await context.bot.send_message(chat_id=chat_id, text="❌ انتهت الجلسة.")
         return
 
     try:
         result = await register.enter_password_and_signin(password)
+        status = result.get("status")
 
-        if result.get("success"):
+        if status == "captcha":
+            context.bot_data[f"state_reg_{user_id}"] = "captcha_after_password"
+            context.bot_data[f"pwd_reg_{user_id}"] = password
+            context.bot_data[f"email_reg_{user_id}"] = email
+
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ حليتها", callback_data=f"captcha_done:{user_id}")]
+            ])
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="🌐 *روح للرابط فوق وحل الـ CAPTCHA*\n\n✅ من بعد ما تحلها، اضغط الزر",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=kb,
+            )
+            return
+
+        if status == "success":
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=(
@@ -366,16 +394,19 @@ async def complete_register(user_id, email, password, chat_id, context):
                 ),
                 parse_mode=ParseMode.MARKDOWN,
             )
-        else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    f"⚠️ التسجيل ما كملش.\n\n"
-                    f"📧 `{email}`\n"
-                    f"📍 URL: `{result.get('final_url', 'unknown')}`"
-                ),
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            try:
+                await register.close()
+            except Exception:
+                pass
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            for k in ("register_", "browser_reg_", "state_reg_", "email_reg_", "pwd_reg_"):
+                context.bot_data.pop(f"{k}{user_id}", None)
+            return
+
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ {result.get('message', 'فشل')}")
 
     except Exception as e:
         log.exception("فشل التسجيل")
@@ -384,17 +415,67 @@ async def complete_register(user_id, email, password, chat_id, context):
         except Exception:
             pass
 
-    finally:
+
+# ═══════════════════════════════════════════
+# captcha_solved
+# ═══════════════════════════════════════════
+
+async def captcha_solved(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = int(query.data.split(":")[1])
+    chat_id = query.message.chat_id
+
+    register = context.bot_data.get(f"register_{user_id}")
+    browser = context.bot_data.get(f"browser_reg_{user_id}")
+    email = context.bot_data.get(f"email_reg_{user_id}")
+    password = context.bot_data.get(f"pwd_reg_{user_id}")
+
+    if not register or not browser:
+        await query.message.reply_text("❌ انتهت الجلسة.")
+        return
+
+    await query.message.edit_text("⏳ نكملو...")
+
+    try:
+        result = await register.resume()
+        status = result.get("status")
+
+        if status == "password":
+            await db.set_session(user_id=user_id, state="waiting_password_register", sso_url=email or "unknown")
+            await query.message.reply_text("🔑 *أرسل كلمة السر:*", parse_mode=ParseMode.MARKDOWN)
+            return
+
+        if status == "success":
+            await query.message.reply_text(
+                f"✅ **تم إنشاء الحساب!**\n\n📧 `{email}`\n🌐 https://www.skills.google/",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            try:
+                await register.close()
+            except Exception:
+                pass
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            for k in ("register_", "browser_reg_", "state_reg_", "email_reg_", "pwd_reg_"):
+                context.bot_data.pop(f"{k}{user_id}", None)
+            return
+
+        if status == "captcha":
+            await query.message.reply_text("🚨 مازال CAPTCHA — حلها وأعد الضغط")
+            return
+
+        await query.message.reply_text(f"❓ {result.get('message', 'حالة غير معروفة')}")
+
+    except Exception as e:
+        log.exception("فشل resume")
         try:
-            await register.close()
+            await query.message.reply_text(f"❌ فشل: {str(e)[:400]}")
         except Exception:
             pass
-        try:
-            await browser.close()
-        except Exception:
-            pass
-        context.bot_data.pop(f"register_{user_id}", None)
-        context.bot_data.pop(f"browser_reg_{user_id}", None)
 
 
 # ═══════════════════════════════════════════
@@ -471,3 +552,5 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_cmd(update, context)
     elif query.data == "help":
         await query.message.reply_text(messages.WELCOME, parse_mode=ParseMode.MARKDOWN)
+    elif query.data.startswith("captcha_done:"):
+        await captcha_solved(update, context)
