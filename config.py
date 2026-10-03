@@ -9,8 +9,7 @@ class Config:
 
     DEFAULT_IMAGE = os.getenv("DEFAULT_IMAGE", "docker.io/ajndjd2/ahmed-vip1")
 
-    # ✅ HEADLESS من env — لازم false باش VNC يخدم
-    HEADLESS = os.getenv("HEADLESS", "false").lower() == "true"
+    HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
     CHROME_PROFILE_DIR = os.getenv("CHROME_PROFILE_DIR", "/tmp/chrome_profile")
     PAGE_TIMEOUT = int(os.getenv("PAGE_TIMEOUT", "60")) * 1000
     NAV_TIMEOUT = int(os.getenv("NAV_TIMEOUT", "120")) * 1000
