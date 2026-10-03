@@ -1,6 +1,6 @@
 """
 automation/skills_register.py
-تسجيل skills.google عبر Google Account + CAPTCHA + تصوير
+تسجيل skills.google عبر Google Account + CAPTCHA (بعد الإيميل + بعد كلمة السر)
 """
 import asyncio
 import base64
@@ -92,14 +92,118 @@ class SkillsRegister:
         except Exception as e:
             log.warning(f"⚠️ _shot: {e}")
 
+    # ═══════════════════════════════════════
+    # helper: يحل reCAPTCHA في الصفحة
+    # ═══════════════════════════════════════
+
+    async def _has_captcha(self, page) -> bool:
+        """يتحقق واش كاين reCAPTCHA في الصفحة"""
+        try:
+            return await page.evaluate("""
+                () => {
+                    // reCAPTCHA iframe
+                    for (const iframe of document.querySelectorAll('iframe')) {
+                        const src = (iframe.src || '').toLowerCase();
+                        if (src.includes('recaptcha') || src.includes('google.com/recaptcha')) {
+                            if (iframe.offsetParent !== null) return true;
+                        }
+                    }
+                    // عناصر reCAPTCHA
+                    for (const el of document.querySelectorAll('.g-recaptcha, [data-sitekey], #recaptcha, .recaptcha-checkbox')) {
+                        if (el.offsetParent !== null) return true;
+                    }
+                    // نص
+                    const body = (document.body.innerText || '').toLowerCase();
+                    if (body.includes("i'm not a robot") || body.includes('verify it\\'s you') ||
+                        body.includes('confirm you\\'re not a robot')) return true;
+                    return false;
+                }
+            """)
+        except Exception:
+            return False
+
+    async def _solve_captcha_if_present(self, page, caption: str = "") -> bool:
+        """إذا كاين reCAPTCHA → يحلها عبر SCTG"""
+        if not await self._has_captcha(page):
+            log.info("ℹ️ ما كاينش CAPTCHA")
+            return True
+
+        log.info("🚨 CAPTCHA موجودة")
+        await self._shot(page, f"🚨 {caption}")
+
+        try:
+            sitekey = await page.evaluate("""
+                () => {
+                    const r = document.querySelector('.g-recaptcha, [data-sitekey]');
+                    if (r && r.getAttribute('data-sitekey')) return r.getAttribute('data-sitekey');
+                    for (const iframe of document.querySelectorAll('iframe')) {
+                        const src = iframe.src || '';
+                        if (src.includes('recaptcha')) {
+                            const m = src.match(/[?&]k=([^&]+)/);
+                            if (m) return decodeURIComponent(m[1]);
+                        }
+                    }
+                    return null;
+                }
+            """)
+
+            if not sitekey:
+                log.warning("⚠️ ما لقيناش sitekey")
+                return False
+
+            log.info(f"🔑 sitekey: {sitekey[:40]}...")
+            token = solve_recaptcha_sctg(sitekey, page.url)
+            if not token:
+                log.warning("⚠️ SCTG ما رجعش توكن")
+                return False
+
+            # نحطو التوكن
+            await page.evaluate("""
+                (token) => {
+                    let el = document.getElementById('g-recaptcha-response');
+                    if (!el) {
+                        el = document.createElement('textarea');
+                        el.id = 'g-recaptcha-response';
+                        el.name = 'g-recaptcha-response';
+                        el.style.display = 'none';
+                        document.body.appendChild(el);
+                    }
+                    el.value = token;
+                    el.innerHTML = token;
+                }
+            """, token)
+            log.info("✅ token set")
+            await self._shot(page, f"✅ {caption} — token")
+
+            # نضغطو Next (إذا كاين)
+            await page.wait_for_timeout(1500)
+            try:
+                next_btn = page.get_by_role("button", name="Next")
+                if await next_btn.count() > 0 and await next_btn.first.is_visible():
+                    await next_btn.first.click()
+                    log.info("✅ Next after CAPTCHA")
+                    await page.wait_for_timeout(5000)
+                    await self._shot(page, f"✅ بعد Next CAPTCHA")
+            except Exception as e:
+                log.warning(f"⚠️ Next after CAPTCHA: {e}")
+
+            return True
+
+        except Exception as e:
+            log.error(f"❌ solve captcha: {e}", exc_info=True)
+            return False
+
+    # ═══════════════════════════════════════
+    # open_signin — إيميل
+    # ═══════════════════════════════════════
+
     async def open_signin(self, email: str) -> bool:
-        """يفتح skills.google → Sign in → Google → إيميل → Next"""
         log.info(f"🚀 Skills — {email}")
         page = await self.context.new_page()
         self.page = page
 
         try:
-            # 1. نفتحو الموقع
+            # 1. نفتحو skills
             await page.goto("https://www.skills.google/", wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(3000)
             await self._shot(page, "1️⃣ skills.google")
@@ -110,7 +214,7 @@ class SkillsRegister:
                 if await signin.count() == 0:
                     signin = page.get_by_role("button", name="Sign in")
                 await signin.first.click()
-                log.info("✅ Sign in clicked")
+                log.info("✅ Sign in")
                 await page.wait_for_timeout(3000)
                 await self._shot(page, "2️⃣ Sign in")
             except Exception as e:
@@ -122,9 +226,9 @@ class SkillsRegister:
                 if await google_btn.count() == 0:
                     google_btn = page.get_by_text("Sign in with Google", exact=False)
                 await google_btn.first.click()
-                log.info("✅ Google clicked")
+                log.info("✅ Google")
                 await page.wait_for_timeout(4000)
-                await self._shot(page, "3️⃣ Google sign in")
+                await self._shot(page, "3️⃣ Google")
             except Exception as e:
                 log.warning(f"⚠️ Google: {e}")
 
@@ -160,21 +264,30 @@ class SkillsRegister:
             except Exception as e:
                 log.warning(f"⚠️ Next: {e}")
 
-            # 6. تحقق كلمة السر
+            # ✅ 6. نتحققو من CAPTCHA بعد الإيميل
             await page.wait_for_timeout(2000)
-            has_password = await page.evaluate("""
-                () => {
-                    for (const el of document.querySelectorAll('input[type="password"]')) {
-                        if (el.offsetParent !== null) return true;
-                    }
-                    return false;
-                }
-            """)
+            await self._solve_captcha_if_present(page, "CAPTCHA بعد الإيميل")
 
-            if has_password:
-                log.info("✅ صفحة كلمة السر")
-                await self._shot(page, "5️⃣ كلمة السر")
-                return True
+            # 7. نستناو ونشوفو واش كاين كلمة السر
+            for i in range(15):
+                await page.wait_for_timeout(1000)
+                has_password = await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('input[type="password"]')) {
+                            if (el.offsetParent !== null) return true;
+                        }
+                        return false;
+                    }
+                """)
+                if has_password:
+                    log.info("✅ صفحة كلمة السر")
+                    await self._shot(page, "5️⃣ كلمة السر")
+                    return True
+
+                # يمكن ظهرت CAPTCHA مرة أخرى
+                if await self._has_captcha(page):
+                    log.warning("⚠️ CAPTCHA مرة أخرى")
+                    await self._solve_captcha_if_present(page, "CAPTCHA إضافية")
 
             await self._shot(page, "❓ صفحة غير متوقعة")
             return False
@@ -184,8 +297,11 @@ class SkillsRegister:
             await self._shot(page, f"❌ {str(e)[:100]}")
             return False
 
+    # ═══════════════════════════════════════
+    # enter_password_and_signin
+    # ═══════════════════════════════════════
+
     async def enter_password_and_signin(self, password: str) -> dict:
-        """يدخل كلمة السر → Next → يحل CAPTCHA → ينشئ حساب"""
         page = self.page
         result = {"success": False, "final_url": None}
 
@@ -210,7 +326,11 @@ class SkillsRegister:
                 await self._shot(page, "❌ ما لقيناش كلمة السر")
                 return result
 
-            # 2. Next
+            # ✅ 2. نحلو CAPTCHA قبل Next
+            await page.wait_for_timeout(1000)
+            await self._solve_captcha_if_present(page, "CAPTCHA بعد كلمة السر")
+
+            # 3. Next
             try:
                 next_btn = page.locator('#passwordNext')
                 if await next_btn.count() == 0:
@@ -222,7 +342,11 @@ class SkillsRegister:
             except Exception as e:
                 log.warning(f"⚠️ Next pwd: {e}")
 
-            # 3. ننتظرو نرجعو لـ skills
+            # ✅ 4. يمكن ظهرت CAPTCHA مرة أخرى
+            await page.wait_for_timeout(2000)
+            await self._solve_captcha_if_present(page, "CAPTCHA بعد كلمة السر 2")
+
+            # 5. ننتظرو نرجعو لـ skills
             for i in range(30):
                 await page.wait_for_timeout(2000)
                 current = page.url
@@ -234,71 +358,22 @@ class SkillsRegister:
             await page.wait_for_timeout(2000)
             await self._shot(page, "8️⃣ الصفحة الحالية")
 
-            # 4. reCAPTCHA
-            try:
-                sitekey = await page.evaluate("""
-                    () => {
-                        const r = document.querySelector('.g-recaptcha, [data-sitekey]');
-                        if (r) return r.getAttribute('data-sitekey');
-                        const iframe = document.querySelector('iframe[src*="recaptcha"]');
-                        if (iframe) {
-                            const m = (iframe.src || '').match(/[?&]k=([^&]+)/);
-                            if (m) return decodeURIComponent(m[1]);
-                        }
-                        return null;
-                    }
-                """)
+            # ✅ 6. يمكن CAPTCHA أخرى
+            await self._solve_captcha_if_present(page, "CAPTCHA نهائية")
 
-                if sitekey:
-                    log.info(f"🔑 sitekey: {sitekey[:40]}...")
-                    token = solve_recaptcha_sctg(sitekey, page.url)
-                    if token:
-                        await page.evaluate("""
-                            (token) => {
-                                let el = document.getElementById('g-recaptcha-response');
-                                if (!el) {
-                                    el = document.createElement('textarea');
-                                    el.id = 'g-recaptcha-response';
-                                    el.name = 'g-recaptcha-response';
-                                    el.style.display = 'none';
-                                    document.body.appendChild(el);
-                                }
-                                el.value = token;
-                            }
-                        """, token)
-                        log.info("✅ CAPTCHA set")
-                        await self._shot(page, "9️⃣ CAPTCHA")
-
-                        # زر قبول
-                        try:
-                            for name in ["قبول", "Accept", "Aceito", "إرسال", "Submit"]:
-                                accept = page.get_by_role("button", name=name)
-                                if await accept.count() > 0:
-                                    await accept.first.click()
-                                    log.info(f"✅ {name} clicked")
-                                    await page.wait_for_timeout(5000)
-                                    await self._shot(page, f"🔟 بعد {name}")
-                                    break
-                        except Exception:
-                            pass
-            except Exception as e:
-                log.warning(f"⚠️ CAPTCHA: {e}")
-
-            await page.wait_for_timeout(3000)
-            await self._shot(page, "1️⃣1️⃣ بعد CAPTCHA")
-
-            # 5. Create account إذا ظهر
+            # 7. Create account إذا ظهر
             try:
                 create = page.get_by_role("button", name="Create account")
                 if await create.count() > 0:
                     await create.first.click()
                     log.info("✅ Create account")
                     await page.wait_for_timeout(5000)
-                    await self._shot(page, "1️⃣2️⃣ Create account")
+                    await self._shot(page, "9️⃣ Create account")
             except Exception:
                 pass
 
-            # 6. النتيجة
+            # 8. النتيجة
+            await page.wait_for_timeout(3000)
             result["final_url"] = page.url
             if "skills.google" in page.url:
                 result["success"] = True
