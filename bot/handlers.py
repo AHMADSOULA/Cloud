@@ -86,7 +86,7 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
 
@@ -95,7 +95,8 @@ DARK_FILES = [
 # SSH DarkTunnel (مشفر)
 # ═══════════════════════════════════════════
 
-SSH_ENCRYPTED_TEMPLATE = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIn19LCJlbmNyeXB0ZWRMb2NrZWRDb25maWciOiJGZkxqR3BNUG45MzIydlQxNjBGcFRiTnE1eEptY1pDdUdneERJcWxyc05WMWNrVmstWnVxQkRqeWVFc0JuN2dsRUk2eFZ6bzFDczYyM2pVdXo3TzE1TkpITmloTWY5LURkUGRKU1FLTTVid1F6STd5MldiYm1wZ2RTWUNadnZoMnhLYmNzalJRVWlxV3BnbUJPUGZGUGYzR29tVTVXN3d0MjlHNGpQWHEtRmlVVWpDLU5peVl2alpLbzFtaWd0d2dXRHk5WjUzd0QyTUdwZWdzUGtSWncxSEJlSGUtdldpdkMwV1piUkpSbnFfcDNKdDdwYjl0WGJpbmJmZk16VTlDbkZoWVZ1dzB4bS02b3k3MjdSQXQxcjYyQTJNcGdKWjlvbDFFV2p3S2VOa2pTZkk2X3JoYTI3V0NneENVVlZHSUZZbkI1cVVGQTg0VW0zUVVsYXRSVjRzZkJmSm1DNzZ5WjZrTTZ1UnJhZ25FdG1tU2l4eDdMSG82ZzVEZXNYek5CeFZhck5HWWNURERUaGNBOUYydnVMQmJKeWtSa2JvbG5VYTFGdTZpSlhWWm9fd3ZIdjNreFlwaFRNR1hmWGtNX0hFMFczdDZTWjMzSGtTbzUzVVNKMm50RjVnTmlVYUhGN1M2SEhjdTJJYi1sX1dFV3BtSE9ZYzRDeDdaTGJ1ZDRvcGo3VWpQN2NiY0hneU80aXFDUTNlTTNaQkJqcTF2SUpoemRzSDFzYTJlTVMzeHdTMnhEVTgyTWtDSFlCLWpDd3EzRVVGYlk3VXhmd3M3a0F6Y0pHeFoyQ001NVlQaVBDM1Q1UHN2UUllWEctVnZlbzZDTGxCOWZQSnVYQ1hzMDh0V1NOSngyaF9Ockt4OUh2S3RQdjhqVWFtbFI0LXNCeWVlc3BLMXhobW14VzhmQm5YdDFxc1JZZjlnN1ZtZUhDS1d5LTRhN3RFU2ZrZXlIVEdDUTZMV1hDWWllWkotcFJUeEgzNlRoVkVydDhPTzc2ZFNua1NPWW9HbU4tYzhYcmJKbUFvWjlGLWdaQjNxSEtDTGZDSi02V2NhT2tPVE9xcTZMMmM1SWhSMDEwTEJ3OV9PQlkyN2hvTGtYVXZIZTFMbEwtNm5nTk9YbTF0Vl8yV0M3WmZWREMzYS1DTjV1UENLZFIyMzMweldXUXJSSXUwMl9VSnFndVZ3cDdvOElKNDEwOFFfT08zQXpWUzVpckowYlU0T1pQXzZ6bVRzVXFaWFRZZmxxLWN6anJrNXMyUmpLVXBqVk5hRENRWHIzSkVnSklyNlcxSUVhOW0tVl9GZlRwcnZGZ3BrZmpEc1ZINDdnSnczRFBERWtXaFRaeXd3NGVEQzd0TFI5Y09pS192X2k3a2dBZ1JobEZ5R2xObnV2NjU1VVN3OE9vaXVZcHVrSFZyWVBLUlE0WWZaYTRSV0ltYWRSTEx3YVhvNWEzbG9sTFR2anNReEFQdEwwZjgxcHhiaC1KdDlQRXlvSHRUajdlYVoyaUpXQUY2TDZlSWE3c1dsOUlQd3NjTWR4TTFVRFVERFZ1QlBxa3JRdFBMQWVsZ09jVWpmTEprbVNnZDY3aGJRTnUzWlJvdGVKTGxtVEJERlZyQnFkSlVZWXpITS1hc0NhTnpLRDZQUFR2MmRGN1oySmxXV1lFd0ZrT3lWa3JjRC1HczNMM2pRT0tja0h0SXBZNGU4Ui1KOVV6Vk15ck9ZVFNkbVFyNW04NmlwWldIajhqNG9xM1lOX1BIalAtbGtCRWE2Q194RGg3bkd1dlFqZmIyNVFjM3F6eVJYNG5HdEFaYW1ZRlZJZ0lMMFk1WHR5Q1VXZ0ZIejl6dlNzekJxcTdrYnhiMzYifQ=="
+# ✅ القالب الأصلي (غير مشفر)
+SSH_TEMPLATE_PLAIN = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
 
 
 def _b64_pad(s: str) -> str:
@@ -132,56 +133,32 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
-    يبني ملف dark جديد مع تشفير (encryptedLockedConfig)
+    يبني ملف SSH dark جديد:
+    - host / username / password: يتغيرو
+    - port: 22 (ثابت)
+    - ملف مشفر (encryptedLockedConfig)
     """
     try:
-        # ✅ 1. نفكو القالب
-        raw_b64 = SSH_ENCRYPTED_TEMPLATE.split("darktunnel://", 1)[1].strip()
-        raw_b64 = _b64_pad(raw_b64)
-        outer_decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
-        data = json.loads(outer_decoded)
-
-        # ✅ 2. نجيبو encryptedLockedConfig
-        enc = data.get("encryptedLockedConfig")
-        if not enc:
-            return _build_plain_ssh_dark(host, username, password)
-
-        # ✅ 3. نفكو التشفير
-        enc_padded = _b64_pad(enc)
-        inner_decoded = base64.b64decode(enc_padded.encode("utf-8")).decode("utf-8")
-
-        try:
-            inner_data = json.loads(inner_decoded)
-        except Exception:
-            inner_data = {}
-
-        # ✅ 4. نبنيو v2rayConfig جديد
-        new_v2ray = {
-            "host": host,
-            "port": 443,
-            "username": username,
-            "password": password,
-            "protocol": "SSH"
+        # ✅ نبنيو config جديد
+        inner_config = {
+            "sshConfig": {
+                "host": host,
+                "port": 22,
+                "username": username,
+                "password": password
+            },
+            "injectConfig": {
+                "enabled": True,
+                "mode": "PROXY"
+            }
         }
 
-        # ✅ 5. نضيفو injectConfig
-        new_v2ray["injectConfig"] = {
-            "enabled": True,
-            "mode": "PROXY"
-        }
-
-        # ✅ 6. نبنيو JSON جديد
-        inner_new = {
-            "type": "SSH",
-            "name": "SSH",
-            "v2rayConfig": new_v2ray
-        }
-
-        inner_json = json.dumps(inner_new, ensure_ascii=False, separators=(",", ":"))
+        # ✅ نشفرو (base64)
+        inner_json = json.dumps(inner_config, ensure_ascii=False, separators=(",", ":"))
         inner_b64 = base64.b64encode(inner_json.encode("utf-8")).decode("utf-8")
 
-        # ✅ 7. نبنيو الملف الخارجي
-        outer_new = {
+        # ✅ الملف الخارجي (نفس صيغة المثال)
+        outer = {
             "type": "SSH",
             "name": "SSH",
             "sshTunnelConfig": {
@@ -193,40 +170,13 @@ def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
             "encryptedLockedConfig": inner_b64
         }
 
-        outer_json = json.dumps(outer_new, ensure_ascii=False, separators=(",", ":"))
+        outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
         outer_b64 = base64.b64encode(outer_json.encode("utf-8")).decode("utf-8")
 
         return "darktunnel://" + outer_b64
 
     except Exception as e:
         log.error(f"❌ build_ssh_dark: {e}", exc_info=True)
-        return _build_plain_ssh_dark(host, username, password)
-
-
-def _build_plain_ssh_dark(host, username, password):
-    """الطريقة القديمة (بلا تشفير) — fallback"""
-    try:
-        outer = {
-            "type": "SSH",
-            "name": "SSH",
-            "sshTunnelConfig": {
-                "sshConfig": {
-                    "host": host,
-                    "username": username,
-                    "password": password
-                },
-                "injectConfig": {
-                    "mode": "PROXY",
-                    "proxyHost": "34.43.46.91",
-                    "proxyPort": 443,
-                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
-                }
-            }
-        }
-        outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
-        outer_b64 = base64.b64encode(outer_json.encode("utf-8")).decode("utf-8")
-        return "darktunnel://" + outer_b64
-    except Exception:
         return None
 
 
@@ -651,7 +601,6 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["ssh_obj"] = ssh
         context.user_data["ssh_browser"] = browser
 
-        # ✅ الدول كأزرار (اسم + flag فقط)
         rows = []
         for i, c in enumerate(countries):
             rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
@@ -708,7 +657,7 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         username = result.get("username")
         password = result.get("password")
 
-        # ✅ ملف مشفر
+        # ✅ نبنيو ملف dark مشفر (host + username + password + port=22)
         new_uri = build_ssh_dark_with_creds(host, username, password)
 
         if not new_uri:
@@ -727,6 +676,7 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"✅ *SSH Account*\n\n"
                 f"🌍 {country}\n"
                 f"🖥️ Host: `{host or '-'}`\n"
+                f"🔌 Port: `22`\n"
                 f"👤 User: `{username}`\n"
                 f"🔑 Pass: `{password}`"
             ),
