@@ -383,76 +383,83 @@ class SSHS8:
                     }
                 """)
 
-            await page.wait_for_timeout(5000)
+            # ✅ 5. انتظار أطول + إغلاق أي ads
+            await page.wait_for_timeout(6000)
             await self._close_ads(page)
+            await page.wait_for_timeout(2000)
             await self._shot(page, "7️⃣ بعد Create")
 
-            # ✅ 5. host — نجربو كل الطرق
-            host = await page.evaluate("""
-                () => {
-                    const body = document.body.innerText || '';
-
-                    // 1. IP (IPv4)
-                    const ip = body.match(/([0-9]{1,3}\\.){3}[0-9]{1,3}/);
-                    if (ip) return ip[0];
-
-                    // 2. hostname (with dot)
-                    const hostname = body.match(/([a-zA-Z0-9][a-zA-Z0-9\\.\\-]*\\.[a-z]{2,})/);
-                    if (hostname) return hostname[0];
-
-                    // 3. أي رقم طويل
-                    const digits = body.match(/\\b\\d{6,}\\b/);
-                    if (digits) return digits[0];
-
-                    return null;
-                }
-            """)
-
-            # ✅ إذا ما لقيناش، نجربو نلقاو input فيه host
-            if not host:
-                try:
-                    host = await page.evaluate("""
-                        () => {
-                            for (const el of document.querySelectorAll('input, code, pre, span, div')) {
-                                const v = el.value || el.innerText || '';
-                                const m = v.match(/([0-9]{1,3}\\.){3}[0-9]{1,3}/);
-                                if (m) return m[0];
-                            }
-                            return null;
+            # ✅ 6. انتظار ظهور معلومات الحساب (host)
+            host = None
+            for attempt in range(15):  # 15 محاولة × 2s = 30s
+                host = await page.evaluate("""
+                    () => {
+                        // 1. IPv4
+                        const body = document.body.innerText || '';
+                        const ipv4 = body.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
+                        if (ipv4 && ipv4[0] !== '0.0.0.0' && ipv4[0] !== '127.0.0.1') {
+                            return ipv4[0];
                         }
-                    """)
-                except Exception:
-                    pass
+
+                        // 2. hostname
+                        const hostname = body.match(/\\b([a-z0-9][a-z0-9\\-]{1,63}\\.)+[a-z]{2,}\\b/i);
+                        if (hostname && !hostname[0].includes('sshs8') && !hostname[0].includes('google')) {
+                            return hostname[0];
+                        }
+
+                        // 3. من input/value
+                        for (const el of document.querySelectorAll('input, textarea, code, pre, span, div, td')) {
+                            const v = (el.value || el.innerText || '').trim();
+                            const m = v.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
+                            if (m) return m[0];
+                        }
+
+                        return null;
+                    }
+                """)
+
+                if host:
+                    log.info(f"✅ Host بعد {attempt * 2}s: {host}")
+                    break
+
+                await page.wait_for_timeout(2000)
 
             result["host"] = host
-            log.info(f"🖥️ Host: {host}")
+            log.info(f"🖥️ Host final: {host}")
 
-            # ✅ 6. username/password من الصفحة
-            new_user = await page.evaluate("""
+            # ✅ 7. نجيبو username/password من الصفحة
+            page_data = await page.evaluate("""
                 () => {
-                    for (const el of document.querySelectorAll('input, code, pre, span')) {
-                        const v = el.value || el.innerText || '';
-                        if (/^u[0-9]{6,}$/.test(v.trim())) return v.trim();
-                    }
-                    return null;
-                }
-            """)
-            new_pass = await page.evaluate("""
-                () => {
-                    for (const el of document.querySelectorAll('input, code, pre, span')) {
-                        const v = el.value || el.innerText || '';
-                        if (/^[a-zA-Z0-9]{6,12}$/.test(v.trim()) && v.trim() !== '') {
-                            return v.trim();
-                        }
-                    }
-                    return null;
+                    const out = { user: null, pass: null, all_text: '' };
+                    out.all_text = document.body.innerText || '';
+
+                    // ندورو على u + أرقام
+                    const userMatch = out.all_text.match(/\\bu[0-9]{6,12}\\b/);
+                    if (userMatch) out.user = userMatch[0];
+
+                    // ندورو على password
+                    const passMatch = out.all_text.match(/(?:password|pass)[\\s:]*([A-Za-z0-9]{6,16})/i);
+                    if (passMatch) out.pass = passMatch[1];
+
+                    return out;
                 }
             """)
 
-            if new_user:
-                result["username"] = new_user
-            if new_pass:
-                result["password"] = new_pass
+            if page_data.get("user"):
+                result["username"] = page_data["user"]
+            if page_data.get("pass"):
+                result["password"] = page_data["pass"]
+
+            log.info(f"👤 User final: {result['username']}")
+            log.info(f"🔑 Pass final: {result['password']}")
+            log.info(f"📄 All text preview: {page_data.get('all_text', '')[:800]}")
+
+            # ✅ 8. إذا مازال host None → فشل
+            if not host:
+                log.warning("❌ مالقيناش host — نرجعو فشل")
+                result["success"] = False
+                result["message"] = "ما قدرناش نلقاو host. تأكد أن الحساب تبدا بنجاح."
+                return result
 
             result["success"] = True
 
