@@ -132,9 +132,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
-    """
-    يبني ملف SSH dark مع بيانات الحساب
-    """
     try:
         outer = {
             "type": "SSH",
@@ -154,12 +151,9 @@ def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
                 }
             }
         }
-
         outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
         outer_b64 = base64.b64encode(outer_json.encode("utf-8")).decode("utf-8")
-
         return "darktunnel://" + outer_b64
-
     except Exception as e:
         log.error(f"❌ build_ssh_dark: {e}", exc_info=True)
         return None
@@ -530,7 +524,7 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket
+# SSH WebSocket — 3 مراحل: قارة → دولة → create
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -556,13 +550,13 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         msg = await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text="⏳ انتظر...",
+            text="⏳ جاري فتح الموقع...",
         )
     except Exception:
         return
 
     try:
-        from automation.sshs8 import SSHS8, KNOWN_COUNTRIES
+        from automation.sshs8 import SSHS8, CONTINENTS
     except Exception as e:
         log.error(f"❌ import sshs8: {e}")
         try:
@@ -576,25 +570,25 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ctx = await browser.start()
         ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
 
-        countries = await ssh.open_ssh_websocket()
-        log.info(f"🌍 Countries: {len(countries)}")
+        continents = await ssh.open_ssh_websocket()
+        log.info(f"🌍 Continents: {continents}")
 
-        if not countries:
-            countries = KNOWN_COUNTRIES
+        if not continents:
+            continents = CONTINENTS
 
-        context.user_data["ssh_countries"] = countries
+        context.user_data["ssh_continents"] = continents
         context.user_data["ssh_obj"] = ssh
         context.user_data["ssh_browser"] = browser
 
         rows = []
-        for i, c in enumerate(countries):
-            rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
+        for i, c in enumerate(continents):
+            rows.append([InlineKeyboardButton(c, callback_data=f"ssh_continent:{i}")])
         rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
         kb = InlineKeyboardMarkup(rows)
 
         try:
             await msg.edit_text(
-                "🌍 *اختر الدولة:*",
+                "🌍 *اختر القارة:*",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=kb,
             )
@@ -609,6 +603,56 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         try:
             await browser.close()
+        except Exception:
+            pass
+
+
+async def ssh_continent_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    idx = int(query.data.split(":")[1])
+
+    continents = context.user_data.get("ssh_continents", [])
+    ssh = context.user_data.get("ssh_obj")
+
+    if not ssh or idx >= len(continents):
+        await query.message.reply_text("❌ انتهت الجلسة. أعد المحاولة.")
+        return
+
+    continent = continents[idx]
+    await query.message.edit_text(f"⏳ جاري فتح {continent}...")
+
+    try:
+        countries = await ssh.select_continent(continent)
+        log.info(f"🌍 Countries in {continent}: {countries}")
+
+        if not countries:
+            await query.message.edit_text(
+                f"❌ ما لقيناش دول في {continent}.\nجرب قارة أخرى."
+            )
+            return
+
+        context.user_data["ssh_countries"] = countries
+        context.user_data["ssh_continent_name"] = continent
+
+        rows = []
+        for i, c in enumerate(countries[:40]):
+            rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
+        rows.append([InlineKeyboardButton("🔙 رجوع للقارات", callback_data="back_continents")])
+        kb = InlineKeyboardMarkup(rows)
+
+        await query.message.edit_text(
+            f"🌍 *{continent}*\n\nاختر الدولة:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb,
+        )
+
+    except Exception as e:
+        log.exception("فشل continent")
+        try:
+            await query.message.edit_text(f"❌ فشل: {str(e)[:300]}")
         except Exception:
             pass
 
@@ -629,9 +673,16 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     country = countries[idx]
-    await query.message.edit_text(f"⏳ جاري إنشاء حساب {country}...")
+    await query.message.edit_text(f"⏳ جاري اختيار {country}...")
 
     try:
+        ok = await ssh.select_country(country)
+        if not ok:
+            await query.message.edit_text(f"❌ ما قدرناش نختارو {country}.")
+            return
+
+        await query.message.edit_text(f"⏳ جاري إنشاء حساب في {country}...")
+
         result = await ssh.create_account(country)
 
         if not result.get("success"):
@@ -650,27 +701,25 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
-        # ✅ 1. Screenshot من الصفحة اللي فيها معلومات الحساب
+        # ✅ Screenshot
         try:
             if ssh.page:
                 shot_path = f"/tmp/ssh_account_{user.id}.png"
                 await ssh.page.screenshot(path=shot_path, full_page=True, timeout=10000)
-
                 with open(shot_path, "rb") as photo:
                     await context.bot.send_photo(
                         chat_id=query.message.chat_id,
                         photo=photo,
                         caption=f"📸 صفحة الحساب — {country}",
                     )
-
                 try:
                     os.remove(shot_path)
                 except Exception:
                     pass
         except Exception as e:
-            log.warning(f"⚠️ فشل إرسال screenshot: {e}")
+            log.warning(f"⚠️ screenshot: {e}")
 
-        # ✅ 2. معلومات الحساب
+        # ✅ معلومات الحساب
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=(
@@ -684,7 +733,7 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ 3. بناء ملف dark
+        # ✅ ملف dark
         new_uri = build_ssh_dark_with_creds(host, username, password)
 
         if not new_uri:
@@ -705,8 +754,10 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             caption=f"📁 {filename}",
         )
 
-        # ✅ 4. تنظيف الجلسة
+        # ✅ تنظيف
+        context.user_data.pop("ssh_continents", None)
         context.user_data.pop("ssh_countries", None)
+        context.user_data.pop("ssh_continent_name", None)
         context.user_data.pop("ssh_obj", None)
         context.user_data.pop("ssh_browser", None)
 
@@ -970,11 +1021,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         return
 
+    if data.startswith("ssh_continent:"):
+        try:
+            await ssh_continent_handler(update, context)
+        except Exception as e:
+            log.exception("فشل continent")
+        return
+
     if data.startswith("ssh_country:"):
         try:
             await ssh_country_handler(update, context)
         except Exception as e:
             log.exception("فشل SSH country")
+        return
+
+    if data == "back_continents":
+        continents = context.user_data.get("ssh_continents", [])
+        if continents:
+            rows = []
+            for i, c in enumerate(continents):
+                rows.append([InlineKeyboardButton(c, callback_data=f"ssh_continent:{i}")])
+            rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
+            kb = InlineKeyboardMarkup(rows)
+            try:
+                await query.message.edit_text(
+                    "🌍 *اختر القارة:*",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=kb,
+                )
+            except Exception:
+                pass
         return
 
     if data == "status":
