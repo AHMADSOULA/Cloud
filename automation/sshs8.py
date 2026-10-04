@@ -1,4 +1,3 @@
-
 """
 automation/sshs8.py
 - vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113
@@ -185,12 +184,9 @@ class SSHS8:
 
             await page.wait_for_timeout(5000)
 
-            # ═══════════════════════════════════════
-            # ✅ 4. استخراج المعلومات — الطريقة الجديدة
-            # ═══════════════════════════════════════
+            # ✅ 4. استخراج المعلومات — بالترتيب
             log.info("🔍 نستخرجو المعلومات...")
-
-            creds = await self._extract_from_labels(page)
+            creds = await self._extract_by_order(page)
 
             result["host"] = creds.get("host")
             result["username"] = creds.get("username")
@@ -202,13 +198,13 @@ class SSHS8:
             await self._send_photo(page, "3️⃣ بعد Create")
 
             if not result["host"]:
-                result["message"] = f"❌ ما لقيناش IPv4.\nURL: {page.url}"
+                result["message"] = f"❌ ما لقيناش IPv4."
                 return result
             if not result["username"]:
-                result["message"] = f"❌ ما لقيناش Username.\nURL: {page.url}"
+                result["message"] = f"❌ ما لقيناش Username."
                 return result
             if not result["password"] or result["password"] == "Copy":
-                result["message"] = f"❌ ما لقيناش Password.\nURL: {page.url}"
+                result["message"] = f"❌ ما لقيناش Password."
                 return result
 
             result["success"] = True
@@ -220,182 +216,101 @@ class SSHS8:
         return result
 
     # ═══════════════════════════════════════
-    # 3. استخراج المعلومات — طريقة Labels
+    # 3. استخراج المعلومات — بالترتيب (index-based)
     # ═══════════════════════════════════════
 
-    async def _extract_from_labels(self, page) -> dict:
+    async def _extract_by_order(self, page) -> dict:
         """
-        يستخرج المعلومات بناءً على أسماء الـ labels الظاهرة فـ الصفحة:
-        IPv4, Domain, Username, Password
+        يستخرج المعلومات حسب ترتيب الـ inputs فـ الصفحة:
+        1. IPv4
+        2. Domain
+        3. Username
+        4. Password
         """
         result = {"host": None, "domain": None, "username": None, "password": None}
 
-        # نستناو الصفحة تكمل
         try:
             await page.wait_for_load_state("networkidle", timeout=15000)
         except Exception:
             pass
         await page.wait_for_timeout(3000)
 
-        # ═══════════════════════════════════════
-        # ✅ المحاولة 1: ندورو على label → input بعدو
-        # ═══════════════════════════════════════
-
         for attempt in range(20):
             data = await page.evaluate(r"""
                 () => {
-                    const out = { host: null, domain: null, username: null, password: null, debug: [] };
+                    const out = { all_values: [], host: null, domain: null, username: null, password: null };
 
-                    // ✅ نجيبو كل النصوص اللي فيها labels
-                    const labels = ['IPv4', 'Domain', 'Username', 'Password', 'Host', 'User'];
-
-                    // ✅ ندورو على كل الـ inputs
-                    const allInputs = document.querySelectorAll('input');
+                    // ✅ نجيبو كل الـ inputs اللي عندها value
+                    const allInputs = Array.from(document.querySelectorAll('input'));
                     
                     for (const inp of allInputs) {
                         const val = (inp.value || '').trim();
-                        
-                        // نجيبو النص اللي قبل الـ input (label)
-                        let labelText = '';
-                        
-                        // ✅ الطريقة 1: الـ input داخل <tr> وفيه <td>label</td><td>input</td>
-                        const tr = inp.closest('tr');
-                        if (tr) {
-                            const tds = tr.querySelectorAll('td, th');
-                            if (tds.length >= 2) {
-                                // الـ td الأول فيه label
-                                for (let i = 0; i < tds.length; i++) {
-                                    if (tds[i].contains(inp)) continue;
-                                    const t = (tds[i].innerText || '').trim();
-                                    if (t.length > 0 && t.length < 30) {
-                                        labelText = t;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // ✅ الطريقة 2: الـ input داخل <div> والـ label في div/span قبليه
-                        if (!labelText) {
-                            let parent = inp.parentElement;
-                            for (let d = 0; d < 6 && parent; d++) {
-                                // ندور على كل العناصر النصية داخل parent
-                                const walker = document.createTreeWalker(
-                                    parent,
-                                    NodeFilter.SHOW_ELEMENT
-                                );
-                                let node;
-                                while (node = walker.nextNode()) {
-                                    if (node.contains(inp) || node === inp) continue;
-                                    const txt = (node.innerText || '').trim();
-                                    if (txt.length > 0 && txt.length < 30 &&
-                                        !txt.includes('\n') &&
-                                        node.children.length === 0) {
-                                        labelText = txt;
-                                        break;
-                                    }
-                                }
-                                if (labelText) break;
-                                parent = parent.parentElement;
-                            }
-                        }
-                        
-                        // ✅ الطريقة 3: ندورو على الـ label الأقرب بالـ previousSibling
-                        if (!labelText) {
-                            let prev = inp.previousElementSibling;
-                            for (let i = 0; i < 5 && prev; i++) {
-                                const t = (prev.innerText || prev.textContent || '').trim();
-                                if (t.length > 0 && t.length < 30) {
-                                    labelText = t;
-                                    break;
-                                }
-                                prev = prev.previousElementSibling;
-                            }
-                        }
-                        
-                        out.debug.push({
-                            label: labelText.substring(0, 30),
-                            val: val.substring(0, 40),
-                            type: inp.type || '',
-                            name: inp.name || '',
-                            id: inp.id || ''
-                        });
-                        
-                        if (!val || val.length < 1) continue;
+                        if (!val) continue;
                         if (val.toLowerCase() === 'copy') continue;
+                        if (val.length < 2) continue;
                         
-                        const lbl = labelText.toLowerCase();
-                        
-                        // ✅ نصنّفو حسب label
-                        if (lbl.includes('ipv4') || lbl === 'ip' || lbl === 'host' || lbl.includes('host')) {
-                            if (!out.host && /^(\d{1,3}\.){3}\d{1,3}$/.test(val)) {
-                                out.host = val;
-                            }
-                        } else if (lbl.includes('domain')) {
-                            if (!out.domain) out.domain = val;
-                        } else if (lbl.includes('username') || lbl === 'user' || lbl.includes('user name')) {
-                            if (!out.username && val.toLowerCase() !== 'copy') {
-                                out.username = val;
-                            }
-                        } else if (lbl.includes('password') || lbl === 'pass') {
-                            if (!out.password && val.toLowerCase() !== 'copy') {
-                                out.password = val;
+                        out.all_values.push({
+                            value: val,
+                            type: inp.type || 'text',
+                            name: inp.name || '',
+                            id: inp.id || '',
+                            cls: (inp.className || '').substring(0, 50),
+                        });
+                    }
+                    
+                    // ✅ الطريقة 1: نعتمدو على الترتيب (index-based)
+                    // فـ sshs8، الترتيب دائماً:
+                    // 0: IPv4
+                    // 1: Domain
+                    // 2: Username
+                    // 3: Password
+                    
+                    const vals = out.all_values.map(x => x.value);
+                    
+                    // IPv4 — أول قيمة تطابق regex IP
+                    for (const v of vals) {
+                        if (/^(\d{1,3}\.){3}\d{1,3}$/.test(v)) {
+                            const parts = v.split('.').map(Number);
+                            if (parts.every(p => p >= 0 && p <= 255) &&
+                                !v.startsWith('192.168.') &&
+                                !v.startsWith('10.') &&
+                                !v.startsWith('172.16.') &&
+                                !v.startsWith('127.')) {
+                                out.host = v;
+                                break;
                             }
                         }
                     }
                     
-                    // ✅ Backup: ندورو على label → nextSibling input بالـ DOM traversal
-                    if (!out.host || !out.domain || !out.username || !out.password) {
-                        const allText = document.body.querySelectorAll('*');
-                        for (const el of allText) {
-                            const txt = (el.innerText || '').trim();
-                            
-                            // ندورو على "IPv4" مثلاً
-                            if (txt === 'IPv4' || txt === 'IPv4:') {
-                                // نجيبو الـ input اللي بعدو
-                                let next = el.nextElementSibling;
-                                for (let i = 0; i < 3 && next; i++) {
-                                    const inp = next.querySelector?.('input') || (next.tagName === 'INPUT' ? next : null);
-                                    if (inp && inp.value) {
-                                        out.host = inp.value.trim();
-                                        break;
-                                    }
-                                    next = next.nextElementSibling;
-                                }
-                            }
-                            if (txt === 'Domain' || txt === 'Domain:') {
-                                let next = el.nextElementSibling;
-                                for (let i = 0; i < 3 && next; i++) {
-                                    const inp = next.querySelector?.('input') || (next.tagName === 'INPUT' ? next : null);
-                                    if (inp && inp.value) {
-                                        out.domain = inp.value.trim();
-                                        break;
-                                    }
-                                    next = next.nextElementSibling;
-                                }
-                            }
-                            if (txt === 'Username' || txt === 'Username:') {
-                                let next = el.nextElementSibling;
-                                for (let i = 0; i < 3 && next; i++) {
-                                    const inp = next.querySelector?.('input') || (next.tagName === 'INPUT' ? next : null);
-                                    if (inp && inp.value && inp.value.toLowerCase() !== 'copy') {
-                                        out.username = inp.value.trim();
-                                        break;
-                                    }
-                                    next = next.nextElementSibling;
-                                }
-                            }
-                            if (txt === 'Password' || txt === 'Password:') {
-                                let next = el.nextElementSibling;
-                                for (let i = 0; i < 3 && next; i++) {
-                                    const inp = next.querySelector?.('input') || (next.tagName === 'INPUT' ? next : null);
-                                    if (inp && inp.value && inp.value.toLowerCase() !== 'copy') {
-                                        out.password = inp.value.trim();
-                                        break;
-                                    }
-                                    next = next.nextElementSibling;
-                                }
-                            }
+                    // Domain — قيمة فيها نقطة وحروف وليست IP
+                    for (const v of vals) {
+                        if (v === out.host) continue;
+                        if (/^[a-z0-9\-\.]+\.[a-z]{2,}$/i.test(v) && 
+                            !/^(\d{1,3}\.){3}\d{1,3}$/.test(v) &&
+                            v.length < 60) {
+                            out.domain = v;
+                            break;
+                        }
+                    }
+                    
+                    // Username — قيمة alphanumeric بدون نقطة، بعد IPv4/domain
+                    for (const v of vals) {
+                        if (v === out.host || v === out.domain) continue;
+                        if (/^[a-z0-9_\-]{4,30}$/i.test(v) && 
+                            !/^\d+$/.test(v) &&
+                            v.length >= 4 && v.length <= 30) {
+                            out.username = v;
+                            break;
+                        }
+                    }
+                    
+                    // Password — قيمة 8-20 حرف، alphanumeric، بعد username
+                    for (const v of vals) {
+                        if (v === out.host || v === out.domain || v === out.username) continue;
+                        if (/^[a-zA-Z0-9!@#$%^&*_\-]{6,40}$/.test(v) &&
+                            v.length >= 6 && v.length <= 40) {
+                            out.password = v;
+                            break;
                         }
                     }
                     
@@ -403,8 +318,9 @@ class SSHS8:
                 }
             """)
 
-            log.info(f"🔍 attempt {attempt+1}: host={data.get('host')} domain={data.get('domain')} user={data.get('username')} pass={data.get('password')}")
-            log.info(f"🔍 debug: {data.get('debug', [])[:6]}")
+            all_vals = data.get("all_values", [])
+            log.info(f"🔍 attempt {attempt+1}: {len(all_vals)} values → {[v['value'][:25] for v in all_vals[:8]]}")
+            log.info(f"🔍 → host={data.get('host')} domain={data.get('domain')} user={data.get('username')} pass={data.get('password')}")
 
             if data.get("host") and not result["host"]:
                 result["host"] = data["host"]
@@ -423,143 +339,7 @@ class SSHS8:
                 log.info("✅ معلومات كاملة!")
                 break
 
-            # ✅ fallback من النص (regex)
-            if not result["host"] or not result["username"] or not result["password"]:
-                body = await page.evaluate("() => document.body.innerText")
-                
-                if not result["host"]:
-                    ips = re.findall(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', body)
-                    for ip in ips:
-                        parts = [int(x) for x in ip.split('.')]
-                        if all(0 <= p <= 255 for p in parts) and \
-                           not ip.startswith(('192.168.', '10.', '172.16.', '127.', '0.')):
-                            result["host"] = ip
-                            log.info(f"✅ Host from text: {ip}")
-                            break
-                
-                if not result["username"]:
-                    m = re.search(r'Username[\s\S]{0,20}?\n([a-zA-Z0-9_\-]{4,30})', body, re.I)
-                    if m and m.group(1).lower() != 'copy':
-                        result["username"] = m.group(1).strip()
-                        log.info(f"✅ User from text: {result['username']}")
-                
-                if not result["domain"]:
-                    m = re.search(r'\b([a-z0-9\-]+\.sshws\.com)\b', body, re.I)
-                    if m:
-                        result["domain"] = m.group(1)
-                        log.info(f"✅ Domain from text: {result['domain']}")
-                
-                if not result["password"] or result["password"] == "Copy":
-                    m = re.search(r'Password[\s\S]{0,20}?\n([a-zA-Z0-9!@#$%^&*_\-]{6,40})', body, re.I)
-                    if m and m.group(1).lower() != 'copy':
-                        result["password"] = m.group(1).strip()
-                        log.info(f"✅ Pass from text: {result['password']}")
-
-            if result["host"] and result["username"] and result["password"]:
-                break
-
             await page.wait_for_timeout(2000)
-
-        # ═══════════════════════════════════════
-        # ✅ Password - كليك على Copy
-        # ═══════════════════════════════════════
-        if not result["password"] or result["password"] == "Copy":
-            log.info("🔑 نحاولو Copy للـ Password...")
-
-            try:
-                # كليك على زر Copy اللي قريب من Password
-                clicked = await page.evaluate(r"""
-                    () => {
-                        // 1. نلقاو حقل Password
-                        let passInput = null;
-                        const allInputs = document.querySelectorAll('input');
-                        for (const inp of allInputs) {
-                            const val = (inp.value || '').toLowerCase().trim();
-                            if (val === 'copy') {
-                                passInput = inp;
-                                break;
-                            }
-                        }
-                        
-                        if (!passInput) {
-                            // نجربو نجيبو input اللي بعد "Password"
-                            const allEls = document.querySelectorAll('*');
-                            for (const el of allEls) {
-                                if ((el.innerText || '').trim() === 'Password') {
-                                    let next = el.parentElement;
-                                    for (let d = 0; d < 3 && next; d++) {
-                                        const inp = next.querySelector('input');
-                                        if (inp) { passInput = inp; break; }
-                                        next = next.parentElement;
-                                    }
-                                    if (passInput) break;
-                                }
-                            }
-                        }
-                        
-                        if (!passInput) return { clicked: false, reason: 'no_pass_input' };
-                        
-                        // 2. نلقاو زر Copy داخل نفس الحاوية
-                        let container = passInput.parentElement;
-                        for (let d = 0; d < 5 && container; d++) {
-                            const btns = container.querySelectorAll('button, a, span, div, [role="button"]');
-                            for (const b of btns) {
-                                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-                                if (t === 'copy') {
-                                    b.click();
-                                    return { clicked: true, reason: 'clicked' };
-                                }
-                            }
-                            container = container.parentElement;
-                        }
-                        
-                        return { clicked: false, reason: 'no_copy_btn' };
-                    }
-                """)
-
-                log.info(f"🔑 Copy result: {clicked}")
-
-                if clicked.get("clicked"):
-                    await page.wait_for_timeout(2000)
-
-                    # نقراو من الـ clipboard
-                    try:
-                        clip = await page.evaluate("async () => { try { return await navigator.clipboard.readText(); } catch(e) { return null; } }")
-                        if clip and len(clip.strip()) > 3 and clip.lower().strip() != 'copy':
-                            result["password"] = clip.strip()
-                            log.info(f"✅ Pass from clipboard: {result['password']}")
-                    except Exception as e:
-                        log.warning(f"⚠️ clipboard: {e}")
-                    
-                    # ✅ من بعد كليك، نعاودو نقراو الـ input
-                    if not result["password"] or result["password"] == "Copy":
-                        try:
-                            pass_val = await page.evaluate(r"""
-                                () => {
-                                    const allInputs = document.querySelectorAll('input');
-                                    for (const inp of allInputs) {
-                                        const val = (inp.value || '').trim();
-                                        if (val && val.toLowerCase() !== 'copy' && val.length >= 6) {
-                                            // نتأكدو أنها password
-                                            const parent = inp.closest('div, tr, td');
-                                            if (parent) {
-                                                const ptxt = (parent.innerText || '').toLowerCase();
-                                                if (ptxt.includes('password')) {
-                                                    return val;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    return null;
-                                }
-                            """)
-                            if pass_val:
-                                result["password"] = pass_val
-                                log.info(f"✅ Pass after Copy: {pass_val}")
-                        except Exception:
-                            pass
-            except Exception as e:
-                log.warning(f"⚠️ password copy: {e}")
 
         return result
 
