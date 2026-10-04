@@ -266,7 +266,6 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.clear_session(user.id)
 
-    # ✅ نغلقو SSH
     ssh = context.user_data.pop("ssh_obj", None)
     if ssh:
         try:
@@ -519,24 +518,39 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket (sshs8.com)
+# SSH WebSocket (sshs8.com) — ✅ مصححة
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """المستخدم ضغط SSH WebSocket"""
+    """المستخدم ضغط SSH WebSocket (callback query)"""
     log.info("🔐 SSH WebSocket clicked")
 
+    query = update.callback_query
     user = update.effective_user
 
     if await db.is_globally_stopped() and not is_admin(user.id):
-        await update.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+        try:
+            await query.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            pass
         return
 
     if not await db.has_access(user.id):
-        await update.message.reply_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+        try:
+            await query.message.reply_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            pass
         return
 
-    msg = await update.message.reply_text("⏳ جاري فتح sshs8.com...")
+    # ✅ نبعثو رسالة جديدة
+    try:
+        msg = await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="⏳ جاري فتح sshs8.com...",
+        )
+    except Exception as e:
+        log.error(f"❌ ما قدرناش نبعثو: {e}")
+        return
 
     try:
         from automation.sshs8 import SSHS8
@@ -564,12 +578,10 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await browser.close()
             return
 
-        # ✅ نخزنو
         context.user_data["ssh_countries"] = countries
         context.user_data["ssh_obj"] = ssh
         context.user_data["ssh_browser"] = browser
 
-        # ✅ نبعثو الدول
         kb = ssh_countries_menu(countries)
 
         try:
@@ -894,7 +906,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     log.info(f"🔘 callback: {data}")
 
-    # ✅ SSH
     if data == "ssh_ws":
         try:
             await handle_ssh(update, context)
