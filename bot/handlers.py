@@ -87,13 +87,13 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQtMTMueXQzLmdncGh0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQxNDAwODYxMjEyMy5ldXJvcGUtd2VzdDEucnVuLmFwcCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtNDE0MDA4NjEyMTIzLmV1cm9wZS13ZXN0MS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJlbmFibGVkIjp0cnVlLCJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0=",
     },
 ]
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel
+# SSH DarkTunnel — بنية التطبيق الحقيقية
 # ═══════════════════════════════════════════
 
 def _b64_pad(s: str) -> str:
@@ -102,6 +102,7 @@ def _b64_pad(s: str) -> str:
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
+    """يعدل wsHeaderHost فـ ملفات VLESS (Cloud Run)"""
     try:
         raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
         raw_b64 = _b64_pad(raw_b64)
@@ -130,27 +131,59 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
-    يبني ملف dark بنفس البنية بالضبط
+    ✅ يبني ملف SSH_4DAY🇫🇷.dark بنفس بنية التطبيق الرسمية
     - Port: 22 ثابت
+    - المعلومات مباشرة فـ encryptedLockedConfig
     """
     try:
         outer = {
             "type": "SSH",
-            "name": "SSH",
+            "name": "SSH_4DAY🇫🇷",
             "sshTunnelConfig": {
-                "sshConfig": {
-                    "host": host or "",
-                    "port": 22,
-                    "username": username or "",
-                    "password": password or "",
-                },
                 "injectConfig": {
-                    "mode": "PROXY",
-                    "proxyHost": "34.43.46.91",
-                    "proxyPort": 443,
-                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
-                },
+                    "enabled": True,
+                    "mode": "PROXY"
+                }
             },
+            "encryptedLockedConfig": {
+                "LockedAppConfig": {
+                    "VersionCode": 32,
+                    "VersionName": "1.0.26",
+                    "Message": "APP_/DARK TUNEEL📱\n\nتفاعل مطلوب _50💖\n\nINTERNET SPEED🌐\n\nيدعم العاب ايضا🕹🧩\n+سناب 🌏ومجاني 🥳 في تعليقات",
+                    "ConnectedMessage": "بصحتك🤍_يدعم العاب 🇧🇪_ارجع تفاعل🥳❤️",
+                    "ExpiredAtTimestamp": 0,
+                    "HardwareIdList": [],
+                    "TunnelType": "SSH",
+                    "IsSshLocked": True
+                },
+                "EncryptedLockedConfig": {
+                    "InjectConfig": {
+                        "IsEncrypted": True,
+                        "EncryptedMode": "PROXY",
+                        "EncryptedProxyHost": "34.43.46.91",
+                        "EncryptedProxyPort": "443",
+                        "EncryptedServerNameIndication": [],
+                        "EncryptedPayload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
+                        "EncryptedDnsttDnsHost": "1.1.1.1",
+                        "EncryptedDnsttDnsPort": "53",
+                        "EncryptedDnsttServerName": [],
+                        "EncryptedDnsttPubkey": []
+                    },
+                    "SshConfig": {
+                        "IsEncrypted": True,
+                        "IsLocked": True,
+                        "EncryptedHost": host or "",
+                        "EncryptedPort": "22",
+                        "EncryptedUsername": username or "",
+                        "EncryptedPassword": password or ""
+                    },
+                    "V2RayConfig": {
+                        "IsEncrypted": True,
+                        "IsInjectModeEnabled": False,
+                        "EncryptedConfig": []
+                    }
+                }
+            }
         }
 
         outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
@@ -640,7 +673,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ بناء ملف dark بنفس البنية
+        # ✅ بناء ملف dark بنفس بنية التطبيق
         new_uri = build_ssh_dark_with_creds(host, username, password)
         if not new_uri:
             await msg.edit_text("❌ فشل بناء ملف dark.")
