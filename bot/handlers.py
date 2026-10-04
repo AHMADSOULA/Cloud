@@ -524,7 +524,7 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket — فرنسا مباشرة
+# SSH WebSocket — France مباشرة
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -569,26 +569,23 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ctx = await browser.start()
         ssh = SSHS8(ctx, sender=msg, user_tag=user.username or user.first_name)
-
         ssh.set_chat(query.message.chat_id)
         ssh.bot = context.bot
 
-        # ✅ 1. نفتحو صفحة فرنسا مباشرة
         ok = await ssh.open_france_page()
         if not ok:
-            await msg.edit_text("❌ ما قدرناش نفتحو صفحة فرنسا.")
+            await msg.edit_text("❌ ما قدرناش نفتحو الصفحة.")
             try:
                 await browser.close()
             except Exception:
                 pass
             return
 
-        # ✅ 2. نخلقو الحساب
         result = await ssh.create_account()
 
         if not result.get("success"):
             error_msg = result.get("message", "سبب غير معروف")
-            await msg.edit_text(f"❌ فشل إنشاء الحساب.\n\n{error_msg}")
+            await msg.edit_text(f"❌ فشل.\n\n{error_msg}")
             try:
                 await ssh.close()
                 await browser.close()
@@ -602,7 +599,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not host or not username or not password:
             await msg.edit_text(
-                "❌ فشل: بيانات الحساب غير مكتملة.\n"
+                "❌ بيانات غير مكتملة.\n"
                 f"Host: {host}\nUser: {username}\nPass: {password}"
             )
             try:
@@ -612,7 +609,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             return
 
-        # ✅ 3. Screenshot نهائي
+        # ✅ Screenshot نهائي
         try:
             if ssh.page:
                 shot_path = f"/tmp/ssh_account_{user.id}.png"
@@ -630,7 +627,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             log.warning(f"⚠️ screenshot: {e}")
 
-        # ✅ 4. معلومات الحساب
+        # ✅ معلومات الحساب
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=(
@@ -644,15 +641,13 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ 5. ملف dark
+        # ✅ ملف dark
         new_uri = build_ssh_dark_with_creds(host, username, password)
-
         if not new_uri:
             await msg.edit_text("❌ فشل بناء ملف dark.")
             return
 
         filename = "SSH - France.dark"
-
         bio = io.BytesIO(new_uri.encode("utf-8"))
         bio.name = filename
         bio.seek(0)
