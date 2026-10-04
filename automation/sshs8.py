@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113
-- يعبي Password → Create → يقرا IPv4/Username/Password من الجدول
+- يعبي Password → Create → يستنى URL جديد → يقرا IPv4/Username/Password
 """
 import asyncio
 import random
@@ -19,48 +19,6 @@ FRANCE_CREATE_URL = "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113"
 def generate_password():
     chars = string.ascii_letters + string.digits
     return "".join(random.choices(chars, k=10))
-
-
-# كلمات ممنوعة باش ما ناخذوهاش كـ username/pass
-FORBIDDEN_WORDS = {
-    'copy', 'copied', 'show', 'hide', 'value', 'field', 'label',
-    'username', 'password', 'ipv4', 'domain', 'port', 'ssl', 'tls',
-    'none', 'null', 'unknown', 'true', 'false', 'yes', 'no',
-    'create', 'account', 'free', 'ssh', 'websocket', 'server',
-    'loading', 'please', 'wait', 'error', 'success', 'info',
-}
-
-
-def is_valid_value(val: str, min_len: int = 3) -> bool:
-    """نتحققو واش القيمة صحيحة (ماشي كلمة محجوزة، طول مناسب...)"""
-    if not val:
-        return False
-    v = val.strip().lower()
-    if len(v) < min_len:
-        return False
-    if v in FORBIDDEN_WORDS:
-        return False
-    # ما تكونش كلشي حروف صغيرة وكلمة واحدة (بحال "copy")
-    if len(v) <= 6 and v.isalpha() and v.islower():
-        return False
-    return True
-
-
-def is_valid_ip(val: str) -> bool:
-    """نتحققو واش IP صحيح"""
-    if not val:
-        return False
-    m = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', val.strip())
-    if not m:
-        return False
-    parts = [int(m.group(i)) for i in range(1, 5)]
-    if not all(0 <= p <= 255 for p in parts):
-        return False
-    if val.startswith('192.168.') or val.startswith('10.') or val.startswith('172.16.'):
-        return False
-    if val in ('0.0.0.0', '127.0.0.1', '255.255.255.255'):
-        return False
-    return True
 
 
 class SSHS8:
@@ -160,6 +118,10 @@ class SSHS8:
             await page.wait_for_timeout(1000)
             await self._send_photo(page, "2️⃣ بعد تعبئة Password")
 
+            # ✅ نسجلو URL قبل Create
+            url_before = page.url
+            log.info(f"🔗 URL قبل Create: {url_before}")
+
             # ✅ نضغطو Create an account
             clicked = False
             for sel in [
@@ -184,23 +146,40 @@ class SSHS8:
             log.info(f"🎯 Create clicked: {clicked}")
 
             # ═══════════════════════════════════════
-            # ✅ نستناو حتى الجدول يتحمّل مزيان
+            # ✅ نستناو URL يتبدل (إلا تبدل)
             # ═══════════════════════════════════════
-            log.info("⏳ نستناو الحساب يتحمّل...")
+            log.info("⏳ نستناو الصفحة الجديدة...")
+
+            url_changed = False
+            for _ in range(15):  # 15 × 1s = 15s
+                await page.wait_for_timeout(1000)
+                if page.url != url_before:
+                    url_changed = True
+                    log.info(f"✅ URL تبدل: {page.url}")
+                    break
+
+            if not url_changed:
+                log.info(f"ℹ️ URL ما تبدلش — نفس الصفحة: {page.url}")
+
+            # ✅ نستناو زيادة باش الصفحة تكمل
+            await page.wait_for_timeout(3000)
+
+            # ═══════════════════════════════════════
+            # ✅ نستخرجو المعلومات
+            # ═══════════════════════════════════════
+            log.info("🔍 نستخرجو المعلومات...")
 
             host = None
             username = None
             password = None
 
-            for attempt in range(30):  # 30 × 2s = 60s
-                await page.wait_for_timeout(2000)
-
-                # ✅ نستخرجو من inputs (الطريقة الأكثر دقة)
+            # 30 محاولة × 2s = 60s
+            for attempt in range(30):
                 info = await page.evaluate("""
                     () => {
                         const out = { host: null, user: null, pass: null, domain: null };
 
-                        // ✅ ندورو على كل input (بما فيها readonly)
+                        // ✅ ندورو على كل input فـ الصفحة
                         const inputs = document.querySelectorAll('input');
                         
                         for (const inp of inputs) {
@@ -208,10 +187,10 @@ class SSHS8:
                             if (!val || val.length < 2) continue;
                             if (val.toLowerCase() === 'copy') continue;
 
-                            // نجيبو الـ label (text قبل input فـ نفس الـ row/div)
+                            // نجيبو الـ label
                             let label = '';
                             
-                            // 1. نجربو الـ <tr><td>label</td><td><input></td></tr>
+                            // 1. من <tr><td>
                             const tr = inp.closest('tr');
                             if (tr) {
                                 const tds = tr.querySelectorAll('td, th');
@@ -220,7 +199,7 @@ class SSHS8:
                                 }
                             }
                             
-                            // 2. نجربو الـ parent div
+                            // 2. من parent div
                             if (!label) {
                                 let p = inp.parentElement;
                                 for (let i = 0; i < 4 && p; i++) {
@@ -233,8 +212,8 @@ class SSHS8:
                                 }
                             }
 
-                            // ✅ نصنّفو حسب label
-                            if (/ipv4|^ip\\b|^ip$|\\bhost\\b/i.test(label)) {
+                            // ✅ نصنّفو
+                            if (/ipv4|^ip\\b|\\bhost\\b/i.test(label)) {
                                 if (!out.host) out.host = val;
                             } else if (/username|user\\s*name|\\buser\\b/i.test(label)) {
                                 if (!out.user) out.user = val;
@@ -245,9 +224,9 @@ class SSHS8:
                             }
                         }
 
-                        // ✅ إذا مالقيناش كامل، ندورو على الـ regex
-                        const body = document.body.innerText || '';
+                        // ✅ إذا مالقيناش host، ندورو على IP فـ الصفحة
                         if (!out.host) {
+                            const body = document.body.innerText || '';
                             const ips = body.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
                             for (const ip of ips) {
                                 const parts = ip.split('.').map(Number);
@@ -255,8 +234,7 @@ class SSHS8:
                                     !ip.startsWith('192.168.') &&
                                     !ip.startsWith('10.') &&
                                     !ip.startsWith('172.16.') &&
-                                    ip !== '0.0.0.0' && ip !== '127.0.0.1' &&
-                                    ip !== '255.255.255.255') {
+                                    ip !== '0.0.0.0' && ip !== '127.0.0.1') {
                                     out.host = ip;
                                     break;
                                 }
@@ -267,25 +245,32 @@ class SSHS8:
                     }
                 """)
 
-                # ✅ نتحققو من الصلاحية فـ Python
-                if info.get("host") and is_valid_ip(info["host"]) and not host:
-                    host = info["host"]
-                    log.info(f"✅ Host لقيناه: {host}")
+                # ✅ نتحققو
+                h = info.get("host")
+                u = info.get("user")
+                p = info.get("pass")
 
-                if info.get("user") and is_valid_value(info["user"], 4) and not username:
-                    username = info["user"]
-                    log.info(f"✅ User لقيناه: {username}")
+                if h and not host and re.match(r'^(\d{1,3}\.){3}\d{1,3}$', h):
+                    host = h
+                    log.info(f"✅ Host: {host} (attempt {attempt+1})")
 
-                if info.get("pass") and is_valid_value(info["pass"], 6) and not password:
-                    password = info["pass"]
-                    log.info(f"✅ Pass لقيناه: {password}")
+                if u and not username and len(u) >= 4 and u.lower() not in ('copy', 'none', 'null'):
+                    username = u
+                    log.info(f"✅ User: {username} (attempt {attempt+1})")
 
-                # ✅ إلا لقينا 3 → نوقفو
+                if p and not password and len(p) >= 6 and p.lower() not in ('copy', 'none', 'null'):
+                    password = p
+                    log.info(f"✅ Pass: {password} (attempt {attempt+1})")
+
+                # ✅ إلا لقينا كامل → نوقفو
                 if host and username and password:
                     log.info(f"✅ معلومات كاملة بعد {(attempt+1)*2}s")
                     break
 
-            log.info(f"🔍 معلومات نهائية: host={host} user={username} pass={password}")
+                await page.wait_for_timeout(2000)
+
+            log.info(f"🔍 نهائي: host={host} user={username} pass={password}")
+            log.info(f"🔗 URL نهائي: {page.url}")
 
             await self._send_photo(page, "3️⃣ بعد Create")
 
@@ -295,15 +280,11 @@ class SSHS8:
 
             if not host:
                 result["success"] = False
-                result["message"] = "ما لقيناش host — شوف آخر screenshot."
+                result["message"] = f"ما لقيناش host.\nURL: {page.url}"
                 return result
             if not username:
                 result["success"] = False
-                result["message"] = "ما لقيناش username — شوف آخر screenshot."
-                return result
-            if not password:
-                result["success"] = False
-                result["message"] = "ما لقيناش password — شوف آخر screenshot."
+                result["message"] = f"ما لقيناش username.\nURL: {page.url}"
                 return result
 
             result["success"] = True
