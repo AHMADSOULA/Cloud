@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
-- sshs8.com → Menu → SSH Websocket → قارة → دولة → Create Account
-- تصوير فكل خطوة للتشخيص
+- sshs8.com → SSH Websocket → CARD قارة → Servers list → دولة → Create
+- تصوير فكل خطوة
 """
 import asyncio
 import random
@@ -43,9 +43,8 @@ class SSHS8:
         self.chat_id = chat_id
 
     async def _send_photo(self, page, caption: str):
-        """نصورو ونبعثو مباشرة عبر البوت"""
         if not self.bot or not self.chat_id:
-            log.warning("⚠️ bot/chat_id ماشي محددين — ما نقدروش نبعثو صورة")
+            log.warning("⚠️ bot/chat_id ماشي محددين")
             return
         path = f"/tmp/sshs8_{int(asyncio.get_event_loop().time()*1000)}.png"
         try:
@@ -82,14 +81,12 @@ class SSHS8:
             await page.wait_for_timeout(4000)
             await self._send_photo(page, "1️⃣ الصفحة الرئيسية")
 
-            # ✅ step 2: نفتحو Menu
+            # ✅ Menu
             menu_opened = False
             for sel in [
                 'button:has-text("Menu")',
                 'a:has-text("Menu")',
                 '[aria-label*="Menu" i]',
-                '[class*="menu" i] button',
-                'button:has-text("☰")',
             ]:
                 try:
                     el = page.locator(sel).first
@@ -117,13 +114,12 @@ class SSHS8:
             await page.wait_for_timeout(2000)
             await self._send_photo(page, "2️⃣ بعد فتح Menu")
 
-            # ✅ step 3: نضغطو SSH Websocket
+            # ✅ SSH Websocket
             ssh_clicked = False
             for sel in [
                 'a:has-text("SSH Websocket")',
                 'li:has-text("SSH Websocket")',
                 'span:has-text("SSH Websocket")',
-                'button:has-text("SSH Websocket")',
             ]:
                 try:
                     el = page.locator(sel).first
@@ -136,7 +132,7 @@ class SSHS8:
                     continue
 
             if not ssh_clicked:
-                clicked = await page.evaluate("""
+                await page.evaluate("""
                     () => {
                         for (const el of document.querySelectorAll('a, li, span, button, div')) {
                             if (el.offsetParent === null) continue;
@@ -145,14 +141,11 @@ class SSHS8:
                                 try { el.click(); return t; } catch (e) {}
                             }
                         }
-                        return null;
                     }
                 """)
-                if clicked:
-                    ssh_clicked = True
 
-            await page.wait_for_timeout(5000)
-            await self._send_photo(page, "3️⃣ بعد SSH Websocket")
+            await page.wait_for_timeout(6000)
+            await self._send_photo(page, "3️⃣ صفحة SSH Websocket")
 
             continents = await self._get_continents(page)
             log.info(f"🌍 القارات: {continents}")
@@ -167,7 +160,7 @@ class SSHS8:
             return CONTINENTS
 
     # ═══════════════════════════════════════
-    # 2. استخراج القارات
+    # 2. استخراج القارات (من الـ cards)
     # ═══════════════════════════════════════
 
     async def _get_continents(self, page) -> list:
@@ -176,13 +169,16 @@ class SSHS8:
                 () => {
                     const out = [];
                     const keywords = ['Europe and West Asia', 'East Asia', 'North America', 'Africa'];
-                    for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, p, div, span, a, button')) {
+                    // ندورو على العناوين داخل cards SSH Websocket
+                    for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, p, div, span, a')) {
                         const t = (el.innerText || '').trim();
                         for (const kw of keywords) {
-                            if (t === kw) out.push(t);
+                            if (t === kw && !out.includes(t)) {
+                                out.push(t);
+                            }
                         }
                     }
-                    return [...new Set(out)];
+                    return out;
                 }
             """)
             return continents or []
@@ -191,7 +187,77 @@ class SSHS8:
             return []
 
     # ═══════════════════════════════════════
-    # 3. استخراج الدول
+    # 3. اختيار قارة — نضغطو على "Servers list" داخل الـ card
+    # ═══════════════════════════════════════
+
+    async def select_continent(self, continent: str) -> list:
+        page = self.page
+        log.info(f"🌍 اختيار القارة: {continent}")
+
+        try:
+            # ✅ نلقاو الزر "Servers list" اللي داخل نفس الـ card اللي فيها اسم القارة
+            clicked = await page.evaluate(f"""
+                () => {{
+                    const target = {continent!r}.toLowerCase();
+                    
+                    // 1. نلقاو كل الـ cards
+                    const cards = document.querySelectorAll('div, section, article');
+                    
+                    for (const card of cards) {{
+                        const cardText = (card.innerText || '').toLowerCase();
+                        if (!cardText.includes(target)) continue;
+                        
+                        // نتأكدو أنها card صغيرة (ما فيها جميع القارات)
+                        const hasMultiple = ['europe', 'east asia', 'north america', 'africa']
+                            .filter(c => cardText.includes(c)).length > 1;
+                        if (hasMultiple) continue;
+                        
+                        // 2. ندورو على زر "Servers list" داخل هاد الـ card
+                        const btns = card.querySelectorAll('a, button, span, div');
+                        for (const btn of btns) {{
+                            const bt = (btn.innerText || '').trim().toLowerCase();
+                            if (bt === 'servers list' || bt === 'server list' ||
+                                bt.includes('servers list')) {{
+                                try {{
+                                    btn.scrollIntoView({{ block: 'center' }});
+                                    btn.click();
+                                    return 'clicked_server_list';
+                                }} catch (e) {{}}
+                            }}
+                        }}
+                    }}
+                    
+                    // 3. fallback: نضغطو على أي زر "Servers list" — أول واحد
+                    for (const btn of document.querySelectorAll('a, button')) {{
+                        const bt = (btn.innerText || '').trim().toLowerCase();
+                        if (bt === 'servers list' || bt === 'server list') {{
+                            try {{
+                                btn.scrollIntoView({{ block: 'center' }});
+                                btn.click();
+                                return 'fallback';
+                            }} catch (e) {{}}
+                        }}
+                    }}
+                    
+                    return null;
+                }}
+            """)
+            log.info(f"🔘 Servers list click: {clicked}")
+
+            await page.wait_for_timeout(6000)
+            await self._send_photo(page, f"4️⃣ بعد اختيار {continent}")
+
+            # ✅ نستخرجو الدول
+            countries = await self._get_countries_from_page(page)
+            log.info(f"🌍 الدول: {countries}")
+            return countries
+
+        except Exception as e:
+            log.error(f"❌ select_continent: {e}", exc_info=True)
+            return []
+
+    # ═══════════════════════════════════════
+    # 4. استخراج الدول (من صفحة servers list)
     # ═══════════════════════════════════════
 
     async def _get_countries_from_page(self, page) -> list:
@@ -199,29 +265,52 @@ class SSHS8:
             countries = await page.evaluate("""
                 () => {
                     const out = [];
-                    for (const el of document.querySelectorAll('a, button, span, div')) {
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t.includes('server list')) {
-                            const parent = el.closest('div, section, article');
-                            if (!parent) continue;
-                            const candidates = parent.querySelectorAll('h1, h2, h3, h4, h5, span, p, div');
-                            for (const c of candidates) {
-                                const txt = (c.innerText || '').trim();
-                                if (/^[A-Z][a-zA-Z\\s\\-]{2,40}$/.test(txt) &&
-                                    txt.length > 3 && txt.length < 40 &&
-                                    !txt.toLowerCase().includes('server') &&
-                                    !txt.toLowerCase().includes('list') &&
-                                    !txt.toLowerCase().includes('create') &&
-                                    !txt.toLowerCase().includes('account') &&
-                                    !txt.toLowerCase().includes('ssh') &&
-                                    !txt.toLowerCase().includes('location')) {
-                                    out.push(txt);
+                    // فصفحة servers list، كل دولة عندها card فيها:
+                    // - اسم الدولة (Bosnia and Herzegovina)
+                    // - Location: ...
+                    // - Create Account button
+                    
+                    // ندورو على كل الأزرار "Create Account"
+                    for (const btn of document.querySelectorAll('a, button, span, div')) {
+                        const t = (btn.innerText || '').trim().toLowerCase();
+                        if (t === 'create account') {
+                            // نطلعو للـ card parent
+                            let card = btn.closest('div, section, article');
+                            if (!card) continue;
+                            
+                            // نتأكدو أنها card صغيرة
+                            const cardText = card.innerText || '';
+                            if (cardText.length > 2000) continue;
+                            
+                            // نلقاو اسم الدولة من العناوين
+                            const headings = card.querySelectorAll('h1, h2, h3, h4, h5, span, strong, b, p, div');
+                            for (const h of headings) {
+                                const ht = (h.innerText || '').trim();
+                                // اسم دولة: حروف كبيرة، 1-3 كلمات، بدون كلمات محجوزة
+                                if (ht.length >= 3 && ht.length <= 50 &&
+                                    /^[A-Z][a-zA-Z\\s\\-'\\.]+$/.test(ht) &&
+                                    !ht.toLowerCase().includes('create') &&
+                                    !ht.toLowerCase().includes('account') &&
+                                    !ht.toLowerCase().includes('ssh') &&
+                                    !ht.toLowerCase().includes('server') &&
+                                    !ht.toLowerCase().includes('location') &&
+                                    !ht.toLowerCase().includes('free') &&
+                                    !ht.toLowerCase().includes('account') &&
+                                    !ht.toLowerCase().includes('city') &&
+                                    !ht.toLowerCase().includes('support') &&
+                                    !ht.toLowerCase().includes('torrent') &&
+                                    !ht.toLowerCase().includes('id') &&
+                                    ht.split(' ').length <= 4) {
+                                    if (!out.includes(ht)) {
+                                        out.push(ht);
+                                    }
                                     break;
                                 }
                             }
                         }
                     }
-                    return [...new Set(out)];
+                    
+                    return out;
                 }
             """)
             return countries or []
@@ -230,50 +319,7 @@ class SSHS8:
             return []
 
     # ═══════════════════════════════════════
-    # 4. اختيار قارة
-    # ═══════════════════════════════════════
-
-    async def select_continent(self, continent: str) -> list:
-        page = self.page
-        log.info(f"🌍 اختيار القارة: {continent}")
-
-        try:
-            clicked = await page.evaluate(f"""
-                () => {{
-                    const target = {continent!r}.toLowerCase();
-                    let best = null;
-                    let bestLen = 99999;
-                    for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, p, div, span, a, button')) {{
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t === target || t.includes(target)) {{
-                            if (t.length < bestLen) {{
-                                best = el;
-                                bestLen = t.length;
-                            }}
-                        }}
-                    }}
-                    if (best) {{
-                        try {{ best.click(); return 'clicked'; }} catch (e) {{}}
-                    }}
-                    return null;
-                }}
-            """)
-            log.info(f"🔘 Click result: {clicked}")
-
-            await page.wait_for_timeout(5000)
-            await self._send_photo(page, f"4️⃣ بعد اختيار {continent}")
-
-            countries = await self._get_countries_from_page(page)
-            log.info(f"🌍 الدول فـ {continent}: {countries}")
-            return countries
-
-        except Exception as e:
-            log.error(f"❌ select_continent: {e}", exc_info=True)
-            return []
-
-    # ═══════════════════════════════════════
-    # 5. اختيار دولة
+    # 5. اختيار دولة → نضغطو Create Account
     # ═══════════════════════════════════════
 
     async def select_country(self, country: str) -> bool:
@@ -284,31 +330,33 @@ class SSHS8:
             clicked = await page.evaluate(f"""
                 () => {{
                     const target = {country!r}.toLowerCase();
-                    for (const el of document.querySelectorAll('a, button, span, div')) {{
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t.includes('server list')) {{
-                            const parent = el.closest('div, section, article');
-                            if (parent && parent.innerText.toLowerCase().includes(target)) {{
-                                try {{ el.click(); return 'server_list'; }} catch (e) {{}}
+                    
+                    // ندورو على card فيها اسم الدولة + زر Create Account
+                    for (const btn of document.querySelectorAll('a, button, span, div')) {{
+                        const t = (btn.innerText || '').trim().toLowerCase();
+                        if (t === 'create account') {{
+                            let card = btn.closest('div, section, article');
+                            if (!card) continue;
+                            const cardText = (card.innerText || '').toLowerCase();
+                            if (cardText.length > 2000) continue;
+                            
+                            if (cardText.includes(target)) {{
+                                try {{
+                                    btn.scrollIntoView({{ block: 'center' }});
+                                    btn.click();
+                                    return 'create_account';
+                                }} catch (e) {{}}
                             }}
                         }}
                     }}
-                    for (const el of document.querySelectorAll('h1, h2, h3, h4, a, button, div, span')) {{
-                        if (el.offsetParent === null) continue;
-                        const t = (el.innerText || '').trim().toLowerCase();
-                        if (t === target) {{
-                            try {{ el.click(); return 'country'; }} catch (e) {{}}
-                        }}
-                    }}
+                    
                     return null;
                 }}
             """)
-            log.info(f"🔘 Select country result: {clicked}")
+            log.info(f"🔘 Create Account click: {clicked}")
 
             await page.wait_for_timeout(5000)
             await self._send_photo(page, f"5️⃣ بعد اختيار {country}")
-
             return clicked is not None
 
         except Exception as e:
@@ -340,43 +388,9 @@ class SSHS8:
         }
 
         try:
-            await self._send_photo(page, "6️⃣ قبل Create Account")
+            await self._send_photo(page, "6️⃣ بعد Create Account")
 
-            clicked = False
-            for sel in [
-                'button:has-text("Create Account")',
-                'a:has-text("Create Account")',
-                'button:has-text("Create")',
-            ]:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.click()
-                        clicked = True
-                        log.info(f"✅ {sel} clicked")
-                        break
-                except Exception:
-                    continue
-
-            if not clicked:
-                c = await page.evaluate("""
-                    () => {
-                        for (const el of document.querySelectorAll('button, a, [role="button"]')) {
-                            if (el.offsetParent === null) continue;
-                            const t = (el.innerText || '').trim().toLowerCase();
-                            if (t.includes('create account') || t === 'create') {
-                                try { el.click(); return t; } catch (e) {}
-                            }
-                        }
-                        return null;
-                    }
-                """)
-                if c:
-                    clicked = True
-
-            await page.wait_for_timeout(4000)
-            await self._send_photo(page, "7️⃣ بعد Create Account")
-
+            # ✅ نعبيو الحقول إذا ظهرو
             try:
                 for sel in [
                     'input[name*="user" i]', 'input[id*="user" i]',
@@ -409,8 +423,8 @@ class SSHS8:
                 log.warning(f"⚠️ inputs: {e}")
 
             await page.wait_for_timeout(2000)
-            await self._send_photo(page, "8️⃣ بعد تعبئة الحقول")
 
+            # ✅ زر Generate/Submit
             for sel in [
                 'button:has-text("Generate")',
                 'button:has-text("Submit")',
@@ -426,9 +440,10 @@ class SSHS8:
                 except Exception:
                     continue
 
-            await page.wait_for_timeout(7000)
-            await self._send_photo(page, "9️⃣ بعد Submit — الصفحة النهائية")
+            await page.wait_for_timeout(8000)
+            await self._send_photo(page, "7️⃣ بعد Submit — الصفحة النهائية")
 
+            # ✅ استخراج
             info = await page.evaluate("""
                 () => {
                     const body = document.body.innerText || '';
@@ -481,7 +496,7 @@ class SSHS8:
             if not result["host"]:
                 log.warning("❌ مالقيناش host")
                 result["success"] = False
-                result["message"] = "ما لقيناش host — شوف الـ screenshot الأخير."
+                result["message"] = "ما لقيناش host — شوف آخر screenshot."
                 return result
 
             result["success"] = True
