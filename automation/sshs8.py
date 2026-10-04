@@ -23,38 +23,38 @@ def generate_password():
 
 
 # ═══════════════════════════════════════════
-# الدول المعروفة (إنترنت سريع)
+# الدول المعروفة (fallback)
 # ═══════════════════════════════════════════
 
 KNOWN_COUNTRIES = [
-    "Belgium 🇧🇪",
-    "United States 🇺🇸",
-    "Germany 🇩🇪",
-    "France 🇫🇷",
-    "Netherlands 🇳🇱",
-    "United Kingdom 🇬🇧",
-    "Canada 🇨🇦",
-    "Switzerland 🇨🇭",
-    "Sweden 🇸🇪",
-    "Norway 🇳🇴",
-    "Finland 🇫🇮",
-    "Denmark 🇩🇰",
-    "Austria 🇦🇹",
-    "Ireland 🇮🇪",
-    "Italy 🇮🇹",
-    "Spain 🇪🇸",
-    "Poland 🇵🇱",
-    "Portugal 🇵🇹",
-    "Romania 🇷🇴",
-    "Turkey 🇹🇷",
-    "Japan 🇯🇵",
-    "South Korea 🇰🇷",
-    "Singapore 🇸🇬",
-    "Hong Kong 🇭🇰",
-    "Australia 🇦🇺",
-    "India 🇮🇳",
-    "UAE 🇦🇪",
-    "Saudi Arabia 🇸🇦",
+    "بلجيكا 🇧🇪",
+    "أمريكا 🇺🇸",
+    "ألمانيا 🇩🇪",
+    "فرنسا 🇫🇷",
+    "هولندا 🇳🇱",
+    "بريطانيا 🇬🇧",
+    "كندا 🇨🇦",
+    "سويسرا 🇨🇭",
+    "السويد 🇸🇪",
+    "النرويج 🇳🇴",
+    "فنلندا 🇫🇮",
+    "الدنمارك 🇩🇰",
+    "النمسا 🇦🇹",
+    "إيرلندا 🇮🇪",
+    "إيطاليا 🇮🇹",
+    "إسبانيا 🇪🇸",
+    "بولندا 🇵🇱",
+    "البرتغال 🇵🇹",
+    "رومانيا 🇷🇴",
+    "تركيا 🇹🇷",
+    "اليابان 🇯🇵",
+    "كوريا الجنوبية 🇰🇷",
+    "سنغافورة 🇸🇬",
+    "هونغ كونغ 🇭🇰",
+    "أستراليا 🇦🇺",
+    "الهند 🇮🇳",
+    "الإمارات 🇦🇪",
+    "السعودية 🇸🇦",
 ]
 
 
@@ -66,8 +66,75 @@ class SSHS8:
         self.page = None
 
     async def _shot(self, page, caption: str = ""):
-        """معطّلة"""
+        """معطّلة — بلا تصوير"""
         return
+
+    # ═══════════════════════════════════════
+    # Flag حسب اسم الدولة
+    # ═══════════════════════════════════════
+
+    def _get_flag(self, name: str) -> str:
+        """يرجع flag حسب اسم الدولة"""
+        name_lower = name.lower()
+        flags = {
+            "belgium": "🇧🇪", "بلجيكا": "🇧🇪",
+            "united states": "🇺🇸", "usa": "🇺🇸", "america": "🇺🇸", "أمريكا": "🇺🇸",
+            "germany": "🇩🇪", "ألمانيا": "🇩🇪",
+            "france": "🇫🇷", "فرنسا": "🇫🇷",
+            "netherlands": "🇳🇱", "هولندا": "🇳🇱",
+            "united kingdom": "🇬🇧", "uk": "🇬🇧", "england": "🇬🇧", "بريطانيا": "🇬🇧",
+            "canada": "🇨🇦", "كندا": "🇨🇦",
+            "switzerland": "🇨🇭", "سويسرا": "🇨🇭",
+            "sweden": "🇸🇪", "السويد": "🇸🇪",
+            "norway": "🇳🇴", "النرويج": "🇳🇴",
+            "finland": "🇫🇮", "فنلندا": "🇫🇮",
+            "denmark": "🇩🇰", "الدنمارك": "🇩🇰",
+            "austria": "🇦🇹", "النمسا": "🇦🇹",
+            "ireland": "🇮🇪", "إيرلندا": "🇮🇪",
+            "italy": "🇮🇹", "إيطاليا": "🇮🇹",
+            "spain": "🇪🇸", "إسبانيا": "🇪🇸",
+            "poland": "🇵🇱", "بولندا": "🇵🇱",
+            "portugal": "🇵🇹", "البرتغال": "🇵🇹",
+            "romania": "🇷🇴", "رومانيا": "🇷🇴",
+            "turkey": "🇹🇷", "تركيا": "🇹🇷",
+            "japan": "🇯🇵", "اليابان": "🇯🇵",
+            "south korea": "🇰🇷", "korea": "🇰🇷", "كوريا": "🇰🇷",
+            "singapore": "🇸🇬", "سنغافورة": "🇸🇬",
+            "hong kong": "🇭🇰", "هونغ كونغ": "🇭🇰",
+            "australia": "🇦🇺", "أستراليا": "🇦🇺",
+            "india": "🇮🇳", "الهند": "🇮🇳",
+            "uae": "🇦🇪", "emirates": "🇦🇪", "الإمارات": "🇦🇪",
+            "saudi": "🇸🇦", "السعودية": "🇸🇦",
+            "brazil": "🇧🇷", "البرازيل": "🇧🇷",
+            "mexico": "🇲🇽", "المكسيك": "🇲🇽",
+            "russia": "🇷🇺", "روسيا": "🇷🇺",
+            "china": "🇨🇳", "الصين": "🇨🇳",
+            "argentina": "🇦🇷", "الأرجنتين": "🇦🇷",
+            "chile": "🇨🇱", "تشيلي": "🇨🇱",
+            "colombia": "🇨🇴", "كولومبيا": "🇨🇴",
+            "egypt": "🇪🇬", "مصر": "🇪🇬",
+            "south africa": "🇿🇦", "جنوب أفريقيا": "🇿🇦",
+            "morocco": "🇲🇦", "المغرب": "🇲🇦",
+            "algeria": "🇩🇿", "الجزائر": "🇩🇿",
+            "tunisia": "🇹🇳", "تونس": "🇹🇳",
+            "nigeria": "🇳🇬", "نيجيريا": "🇳🇬",
+            "kenya": "🇰🇪", "كينيا": "🇰🇪",
+            "greece": "🇬🇷", "اليونان": "🇬🇷",
+            "czech": "🇨🇿", "التشيك": "🇨🇿",
+            "hungary": "🇭🇺", "هنغاريا": "🇭🇺",
+            "ukraine": "🇺🇦", "أوكرانيا": "🇺🇦",
+            "israel": "🇮🇱", "إسرائيل": "🇮🇱",
+            "malaysia": "🇲🇾", "ماليزيا": "🇲🇾",
+            "thailand": "🇹🇭", "تايلاند": "🇹🇭",
+            "vietnam": "🇻🇳", "فيتنام": "🇻🇳",
+            "philippines": "🇵🇭", "الفلبين": "🇵🇭",
+            "indonesia": "🇮🇩", "إندونيسيا": "🇮🇩",
+            "new zealand": "🇳🇿", "نيوزيلندا": "🇳🇿",
+        }
+        for k, v in flags.items():
+            if k in name_lower:
+                return v
+        return ""
 
     # ═══════════════════════════════════════
     # إغلاق الإعلانات
@@ -121,7 +188,7 @@ class SSHS8:
     # ═══════════════════════════════════════
 
     async def open_ssh_websocket(self) -> list:
-        """يفتح sshs8.com → SSH WebSocket → يرجع الدول"""
+        """يفتح sshs8.com → SSH WebSocket → يرجع كل الدول من الموقع"""
         log.info("🌐 فتح sshs8.com")
 
         self.page = await self.context.new_page()
@@ -179,39 +246,73 @@ class SSHS8:
 
             await page.wait_for_timeout(2000)
 
-            # ✅ نرجعو الدول المعروفة فقط
-            # (نشوفو واش الدول موجودة في الصفحة)
-            available = await self._filter_available(page)
-            log.info(f"🌍 الدول المتوفرة: {len(available)}")
+            # ✅ نجيبو كل الدول من الموقع
+            countries = await self._get_countries(page)
+            log.info(f"🌍 الدول من الموقع: {len(countries)}")
 
-            return available if available else KNOWN_COUNTRIES
+            if countries and len(countries) > 3:
+                # ✅ نضيفو flag لكل دولة
+                final = []
+                for c in countries:
+                    name = c.strip()
+                    flag = self._get_flag(name)
+                    final.append(f"{name} {flag}" if flag else name)
+                return final
+
+            # ✅ إذا ما لقيناش، نرجعو القائمة المعروفة
+            return KNOWN_COUNTRIES
 
         except Exception as e:
             log.error(f"❌ open_ssh_websocket: {e}", exc_info=True)
             return KNOWN_COUNTRIES
 
     # ═══════════════════════════════════════
-    # 2. فلترة الدول المتوفرة
+    # 2. جلب كل الدول من الموقع
     # ═══════════════════════════════════════
 
-    async def _filter_available(self, page) -> list:
-        """يشوف واش الدول موجودة في الصفحة"""
+    async def _get_countries(self, page) -> list:
+        """يجيب كل الدول من الـ select/dropdown"""
         try:
-            page_text = await page.evaluate("""
+            countries = await page.evaluate("""
                 () => {
-                    return (document.body.innerText || '').toLowerCase();
+                    const out = [];
+
+                    // 1. <select> options
+                    for (const sel of document.querySelectorAll('select')) {
+                        for (const opt of sel.querySelectorAll('option')) {
+                            const t = (opt.innerText || opt.textContent || '').trim();
+                            if (t && t.length > 1 && t.length < 80 &&
+                                !t.toLowerCase().includes('select') &&
+                                !t.toLowerCase().includes('choose') &&
+                                !t.toLowerCase().includes('---') &&
+                                !t.toLowerCase().includes('option')) {
+                                out.push(t);
+                            }
+                        }
+                    }
+
+                    // 2. dropdown مخصص
+                    if (out.length === 0) {
+                        for (const el of document.querySelectorAll('[role="listbox"], [class*="dropdown" i], [class*="select" i]')) {
+                            for (const opt of el.querySelectorAll('[role="option"], li, a, button')) {
+                                const t = (opt.innerText || '').trim();
+                                if (t && t.length > 1 && t.length < 80 &&
+                                    !t.toLowerCase().includes('select') &&
+                                    !t.toLowerCase().includes('choose') &&
+                                    !t.toLowerCase().includes('back') &&
+                                    !t.toLowerCase().includes('close')) {
+                                    out.push(t);
+                                }
+                            }
+                        }
+                    }
+
+                    return [...new Set(out)];
                 }
             """)
-
-            available = []
-            for c in KNOWN_COUNTRIES:
-                # ناخدو الاسم فقط (بلا flag)
-                name = c.split(" ")[0].lower()
-                if name in page_text:
-                    available.append(c)
-
-            return available
-        except Exception:
+            return countries or []
+        except Exception as e:
+            log.error(f"❌ _get_countries: {e}")
             return []
 
     # ═══════════════════════════════════════
