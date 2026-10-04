@@ -1,12 +1,13 @@
 """
 automation/sshs8.py
 دخول sshs8.com → إغلاق الإعلانات → SSH WebSocket → اختيار دولة
-+ بلا تصوير
++ تصوير كل خطوة
 """
 import asyncio
 import random
 import string
 import re
+import os
 from playwright.async_api import expect
 from utils.logger import get_logger
 
@@ -27,34 +28,14 @@ def generate_password():
 # ═══════════════════════════════════════════
 
 KNOWN_COUNTRIES = [
-    "بلجيكا 🇧🇪",
-    "أمريكا 🇺🇸",
-    "ألمانيا 🇩🇪",
-    "فرنسا 🇫🇷",
-    "هولندا 🇳🇱",
-    "بريطانيا 🇬🇧",
-    "كندا 🇨🇦",
-    "سويسرا 🇨🇭",
-    "السويد 🇸🇪",
-    "النرويج 🇳🇴",
-    "فنلندا 🇫🇮",
-    "الدنمارك 🇩🇰",
-    "النمسا 🇦🇹",
-    "إيرلندا 🇮🇪",
-    "إيطاليا 🇮🇹",
-    "إسبانيا 🇪🇸",
-    "بولندا 🇵🇱",
-    "البرتغال 🇵🇹",
-    "رومانيا 🇷🇴",
-    "تركيا 🇹🇷",
-    "اليابان 🇯🇵",
-    "كوريا الجنوبية 🇰🇷",
-    "سنغافورة 🇸🇬",
-    "هونغ كونغ 🇭🇰",
-    "أستراليا 🇦🇺",
-    "الهند 🇮🇳",
-    "الإمارات 🇦🇪",
-    "السعودية 🇸🇦",
+    "بلجيكا 🇧🇪", "أمريكا 🇺🇸", "ألمانيا 🇩🇪", "فرنسا 🇫🇷",
+    "هولندا 🇳🇱", "بريطانيا 🇬🇧", "كندا 🇨🇦", "سويسرا 🇨🇭",
+    "السويد 🇸🇪", "النرويج 🇳🇴", "فنلندا 🇫🇮", "الدنمارك 🇩🇰",
+    "النمسا 🇦🇹", "إيرلندا 🇮🇪", "إيطاليا 🇮🇹", "إسبانيا 🇪🇸",
+    "بولندا 🇵🇱", "البرتغال 🇵🇹", "رومانيا 🇷🇴", "تركيا 🇹🇷",
+    "اليابان 🇯🇵", "كوريا الجنوبية 🇰🇷", "سنغافورة 🇸🇬",
+    "هونغ كونغ 🇭🇰", "أستراليا 🇦🇺", "الهند 🇮🇳",
+    "الإمارات 🇦🇪", "السعودية 🇸🇦",
 ]
 
 
@@ -66,70 +47,42 @@ class SSHS8:
         self.page = None
 
     async def _shot(self, page, caption: str = ""):
-        """معطّلة — بلا تصوير"""
-        return
+        """screenshot + send"""
+        if not self.sender:
+            return
+        try:
+            path = f"/tmp/sshs8_{int(asyncio.get_event_loop().time()*1000)}.png"
+            await page.screenshot(path=path, full_page=False, timeout=10000)
+            with open(path, "rb") as f:
+                try:
+                    await self.sender.reply_photo(photo=f, caption=f"📸 {caption}"[:1000])
+                except Exception:
+                    pass
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        except Exception as e:
+            log.warning(f"⚠️ _shot: {e}")
 
     # ═══════════════════════════════════════
-    # Flag حسب اسم الدولة
+    # Flag
     # ═══════════════════════════════════════
 
     def _get_flag(self, name: str) -> str:
-        """يرجع flag حسب اسم الدولة"""
         name_lower = name.lower()
         flags = {
-            "belgium": "🇧🇪", "بلجيكا": "🇧🇪",
-            "united states": "🇺🇸", "usa": "🇺🇸", "america": "🇺🇸", "أمريكا": "🇺🇸",
-            "germany": "🇩🇪", "ألمانيا": "🇩🇪",
-            "france": "🇫🇷", "فرنسا": "🇫🇷",
-            "netherlands": "🇳🇱", "هولندا": "🇳🇱",
-            "united kingdom": "🇬🇧", "uk": "🇬🇧", "england": "🇬🇧", "بريطانيا": "🇬🇧",
-            "canada": "🇨🇦", "كندا": "🇨🇦",
-            "switzerland": "🇨🇭", "سويسرا": "🇨🇭",
-            "sweden": "🇸🇪", "السويد": "🇸🇪",
-            "norway": "🇳🇴", "النرويج": "🇳🇴",
-            "finland": "🇫🇮", "فنلندا": "🇫🇮",
-            "denmark": "🇩🇰", "الدنمارك": "🇩🇰",
-            "austria": "🇦🇹", "النمسا": "🇦🇹",
-            "ireland": "🇮🇪", "إيرلندا": "🇮🇪",
-            "italy": "🇮🇹", "إيطاليا": "🇮🇹",
-            "spain": "🇪🇸", "إسبانيا": "🇪🇸",
-            "poland": "🇵🇱", "بولندا": "🇵🇱",
-            "portugal": "🇵🇹", "البرتغال": "🇵🇹",
-            "romania": "🇷🇴", "رومانيا": "🇷🇴",
-            "turkey": "🇹🇷", "تركيا": "🇹🇷",
-            "japan": "🇯🇵", "اليابان": "🇯🇵",
-            "south korea": "🇰🇷", "korea": "🇰🇷", "كوريا": "🇰🇷",
-            "singapore": "🇸🇬", "سنغافورة": "🇸🇬",
-            "hong kong": "🇭🇰", "هونغ كونغ": "🇭🇰",
-            "australia": "🇦🇺", "أستراليا": "🇦🇺",
-            "india": "🇮🇳", "الهند": "🇮🇳",
-            "uae": "🇦🇪", "emirates": "🇦🇪", "الإمارات": "🇦🇪",
-            "saudi": "🇸🇦", "السعودية": "🇸🇦",
-            "brazil": "🇧🇷", "البرازيل": "🇧🇷",
-            "mexico": "🇲🇽", "المكسيك": "🇲🇽",
-            "russia": "🇷🇺", "روسيا": "🇷🇺",
-            "china": "🇨🇳", "الصين": "🇨🇳",
-            "argentina": "🇦🇷", "الأرجنتين": "🇦🇷",
-            "chile": "🇨🇱", "تشيلي": "🇨🇱",
-            "colombia": "🇨🇴", "كولومبيا": "🇨🇴",
-            "egypt": "🇪🇬", "مصر": "🇪🇬",
-            "south africa": "🇿🇦", "جنوب أفريقيا": "🇿🇦",
-            "morocco": "🇲🇦", "المغرب": "🇲🇦",
-            "algeria": "🇩🇿", "الجزائر": "🇩🇿",
-            "tunisia": "🇹🇳", "تونس": "🇹🇳",
-            "nigeria": "🇳🇬", "نيجيريا": "🇳🇬",
-            "kenya": "🇰🇪", "كينيا": "🇰🇪",
-            "greece": "🇬🇷", "اليونان": "🇬🇷",
-            "czech": "🇨🇿", "التشيك": "🇨🇿",
-            "hungary": "🇭🇺", "هنغاريا": "🇭🇺",
-            "ukraine": "🇺🇦", "أوكرانيا": "🇺🇦",
-            "israel": "🇮🇱", "إسرائيل": "🇮🇱",
-            "malaysia": "🇲🇾", "ماليزيا": "🇲🇾",
-            "thailand": "🇹🇭", "تايلاند": "🇹🇭",
-            "vietnam": "🇻🇳", "فيتنام": "🇻🇳",
-            "philippines": "🇵🇭", "الفلبين": "🇵🇭",
-            "indonesia": "🇮🇩", "إندونيسيا": "🇮🇩",
-            "new zealand": "🇳🇿", "نيوزيلندا": "🇳🇿",
+            "belgium": "🇧🇪", "united states": "🇺🇸", "usa": "🇺🇸", "america": "🇺🇸",
+            "germany": "🇩🇪", "france": "🇫🇷", "netherlands": "🇳🇱", "holland": "🇳🇱",
+            "united kingdom": "🇬🇧", "uk": "🇬🇧", "england": "🇬🇧",
+            "canada": "🇨🇦", "switzerland": "🇨🇭", "sweden": "🇸🇪", "norway": "🇳🇴",
+            "finland": "🇫🇮", "denmark": "🇩🇰", "austria": "🇦🇹", "ireland": "🇮🇪",
+            "italy": "🇮🇹", "spain": "🇪🇸", "poland": "🇵🇱", "portugal": "🇵🇹",
+            "romania": "🇷🇴", "turkey": "🇹🇷", "japan": "🇯🇵",
+            "south korea": "🇰🇷", "korea": "🇰🇷", "singapore": "🇸🇬",
+            "hong kong": "🇭🇰", "australia": "🇦🇺", "india": "🇮🇳",
+            "uae": "🇦🇪", "emirates": "🇦🇪", "saudi": "🇸🇦",
+            "brazil": "🇧🇷", "mexico": "🇲🇽", "russia": "🇷🇺", "china": "🇨🇳",
         }
         for k, v in flags.items():
             if k in name_lower:
@@ -153,18 +106,12 @@ class SSHS8:
                             if (el.offsetParent === null) continue;
                             const t = (el.innerText || el.getAttribute('aria-label') || '').trim().toLowerCase();
                             for (const kw of close_texts) {
-                                if (t === kw) {
-                                    try { el.click(); closed++; break; } catch (e) {}
-                                }
+                                if (t === kw) { try { el.click(); closed++; break; } catch (e) {} }
                             }
                         }
-                        for (const el of document.querySelectorAll('[class*="close" i], [class*="popup" i], [class*="ad-" i], [id*="close" i]')) {
+                        for (const el of document.querySelectorAll('[class*="close" i], [class*="popup" i], [class*="ad-" i]')) {
                             if (el.offsetParent === null) continue;
                             try { el.click(); closed++; } catch (e) {}
-                        }
-                        for (const el of document.querySelectorAll('[class*="overlay" i], [class*="modal" i]')) {
-                            if (el.offsetParent === null) continue;
-                            try { el.style.display = 'none'; closed++; } catch (e) {}
                         }
                         return closed;
                     }
@@ -174,13 +121,11 @@ class SSHS8:
                     await page.wait_for_timeout(500)
             except Exception:
                 pass
-
         try:
             await page.keyboard.press("Escape")
             await page.wait_for_timeout(500)
         except Exception:
             pass
-
         return closed_count
 
     # ═══════════════════════════════════════
@@ -188,20 +133,20 @@ class SSHS8:
     # ═══════════════════════════════════════
 
     async def open_ssh_websocket(self) -> list:
-        """يفتح sshs8.com → SSH WebSocket → يرجع كل الدول من الموقع"""
         log.info("🌐 فتح sshs8.com")
-
         self.page = await self.context.new_page()
         page = self.page
 
         try:
             await page.goto("https://sshs8.com/", wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(4000)
+            await self._shot(page, "1️⃣ sshs8.com")
 
             await self._close_ads(page)
             await page.wait_for_timeout(1500)
+            await self._shot(page, "2️⃣ بعد إغلاق الإعلانات")
 
-            # ✅ نروحو مباشرة لصفحة SSH WebSocket
+            # ✅ نروحو SSH WebSocket
             ssh_url = None
             try:
                 ssh_url = await page.evaluate("""
@@ -240,18 +185,16 @@ class SSHS8:
                             break
                     except Exception:
                         continue
-
                 await page.wait_for_timeout(4000)
                 await self._close_ads(page)
 
             await page.wait_for_timeout(2000)
+            await self._shot(page, "3️⃣ صفحة SSH WebSocket")
 
-            # ✅ نجيبو كل الدول من الموقع
             countries = await self._get_countries(page)
-            log.info(f"🌍 الدول من الموقع: {len(countries)}")
+            log.info(f"🌍 الدول: {len(countries)}")
 
             if countries and len(countries) > 3:
-                # ✅ نضيفو flag لكل دولة
                 final = []
                 for c in countries:
                     name = c.strip()
@@ -259,7 +202,6 @@ class SSHS8:
                     final.append(f"{name} {flag}" if flag else name)
                 return final
 
-            # ✅ إذا ما لقيناش، نرجعو القائمة المعروفة
             return KNOWN_COUNTRIES
 
         except Exception as e:
@@ -267,17 +209,14 @@ class SSHS8:
             return KNOWN_COUNTRIES
 
     # ═══════════════════════════════════════
-    # 2. جلب كل الدول من الموقع
+    # 2. جلب الدول
     # ═══════════════════════════════════════
 
     async def _get_countries(self, page) -> list:
-        """يجيب كل الدول من الـ select/dropdown"""
         try:
             countries = await page.evaluate("""
                 () => {
                     const out = [];
-
-                    // 1. <select> options
                     for (const sel of document.querySelectorAll('select')) {
                         for (const opt of sel.querySelectorAll('option')) {
                             const t = (opt.innerText || opt.textContent || '').trim();
@@ -290,8 +229,6 @@ class SSHS8:
                             }
                         }
                     }
-
-                    // 2. dropdown مخصص
                     if (out.length === 0) {
                         for (const el of document.querySelectorAll('[role="listbox"], [class*="dropdown" i], [class*="select" i]')) {
                             for (const opt of el.querySelectorAll('[role="option"], li, a, button')) {
@@ -306,7 +243,6 @@ class SSHS8:
                             }
                         }
                     }
-
                     return [...new Set(out)];
                 }
             """)
@@ -345,8 +281,9 @@ class SSHS8:
         try:
             await self._close_ads(page)
             await page.wait_for_timeout(1000)
+            await self._shot(page, "4️⃣ قبل اختيار الدولة")
 
-            # ✅ 1. نختارو الدولة
+            # ✅ 1. اختيار الدولة
             clicked_country = await page.evaluate(f"""
                 () => {{
                     const target = {country_name!r}.toLowerCase();
@@ -378,13 +315,12 @@ class SSHS8:
                     pass
 
             await page.wait_for_timeout(2000)
+            await self._shot(page, f"5️⃣ بعد اختيار {country_name}")
 
             # ✅ 2. username
             for sel in [
-                'input[name*="user" i]',
-                'input[id*="user" i]',
-                'input[placeholder*="user" i]',
-                'input[type="text"]',
+                'input[name*="user" i]', 'input[id*="user" i]',
+                'input[placeholder*="user" i]', 'input[type="text"]',
             ]:
                 try:
                     el = page.locator(sel).first
@@ -401,10 +337,8 @@ class SSHS8:
 
             # ✅ 3. password
             for sel in [
-                'input[name*="pass" i]',
-                'input[id*="pass" i]',
-                'input[placeholder*="pass" i]',
-                'input[type="password"]',
+                'input[name*="pass" i]', 'input[id*="pass" i]',
+                'input[placeholder*="pass" i]', 'input[type="password"]',
             ]:
                 try:
                     el = page.locator(sel).first
@@ -418,14 +352,13 @@ class SSHS8:
                     continue
 
             await page.wait_for_timeout(1000)
+            await self._shot(page, "6️⃣ بعد تعبئة الحقول")
 
             # ✅ 4. Create
             submitted = False
             for sel in [
-                'button:has-text("Create")',
-                'button:has-text("Submit")',
-                'button:has-text("Create Account")',
-                'button:has-text("Generate")',
+                'button:has-text("Create")', 'button:has-text("Submit")',
+                'button:has-text("Create Account")', 'button:has-text("Generate")',
                 'input[type="submit"]',
             ]:
                 try:
@@ -452,19 +385,47 @@ class SSHS8:
 
             await page.wait_for_timeout(5000)
             await self._close_ads(page)
+            await self._shot(page, "7️⃣ بعد Create")
 
-            # ✅ 5. host
+            # ✅ 5. host — نجربو كل الطرق
             host = await page.evaluate("""
                 () => {
                     const body = document.body.innerText || '';
+
+                    // 1. IP (IPv4)
                     const ip = body.match(/([0-9]{1,3}\\.){3}[0-9]{1,3}/);
                     if (ip) return ip[0];
-                    const host = body.match(/([a-zA-Z0-9\\.\\-]+\\.[a-z]{2,})/);
-                    if (host) return host[0];
+
+                    // 2. hostname (with dot)
+                    const hostname = body.match(/([a-zA-Z0-9][a-zA-Z0-9\\.\\-]*\\.[a-z]{2,})/);
+                    if (hostname) return hostname[0];
+
+                    // 3. أي رقم طويل
+                    const digits = body.match(/\\b\\d{6,}\\b/);
+                    if (digits) return digits[0];
+
                     return null;
                 }
             """)
+
+            # ✅ إذا ما لقيناش، نجربو نلقاو input فيه host
+            if not host:
+                try:
+                    host = await page.evaluate("""
+                        () => {
+                            for (const el of document.querySelectorAll('input, code, pre, span, div')) {
+                                const v = el.value || el.innerText || '';
+                                const m = v.match(/([0-9]{1,3}\\.){3}[0-9]{1,3}/);
+                                if (m) return m[0];
+                            }
+                            return null;
+                        }
+                    """)
+                except Exception:
+                    pass
+
             result["host"] = host
+            log.info(f"🖥️ Host: {host}")
 
             # ✅ 6. username/password من الصفحة
             new_user = await page.evaluate("""
@@ -497,6 +458,7 @@ class SSHS8:
 
         except Exception as e:
             log.error(f"❌ create_account: {e}", exc_info=True)
+            await self._shot(page, f"❌ خطأ: {str(e)[:100]}")
 
         return result
 
