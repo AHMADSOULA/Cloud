@@ -132,41 +132,27 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
-    يبني ملف SSH dark:
-    - host / username / password: يتغيرو
-    - port: 22 (ثابت)
-    - يُشفّر (encryptedLockedConfig)
+    يبني ملف SSH dark — بلا تشفير (باش نشوفو المشكل)
     """
     try:
-        # ✅ inner config (اللي رايح يتشفر)
-        inner_config = {
-            "v2rayConfig": {
-                "host": host,
-                "port": 22,
-                "username": username,
-                "password": password,
-                "injectConfig": {
-                    "enabled": True,
-                    "mode": "PROXY"
-                }
-            }
-        }
-
-        # ✅ نشفرو (base64)
-        inner_json = json.dumps(inner_config, ensure_ascii=False, separators=(",", ":"))
-        inner_b64 = base64.b64encode(inner_json.encode("utf-8")).decode("utf-8")
-
-        # ✅ outer (نفس صيغة المثال)
+        # ✅ بلا تشفير — config واضح
         outer = {
             "type": "SSH",
             "name": "SSH",
             "sshTunnelConfig": {
+                "sshConfig": {
+                    "host": host or "",
+                    "port": 22,
+                    "username": username,
+                    "password": password
+                },
                 "injectConfig": {
-                    "enabled": True,
-                    "mode": "PROXY"
+                    "mode": "PROXY",
+                    "proxyHost": "34.43.46.91",
+                    "proxyPort": 443,
+                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
                 }
-            },
-            "encryptedLockedConfig": inner_b64
+            }
         }
 
         outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
