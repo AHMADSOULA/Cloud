@@ -61,7 +61,7 @@ class SSHS8:
                 pass
 
     # ═══════════════════════════════════════
-    # 1. فتح صفحة فرنسا مباشرة
+    # 1. فتح صفحة فرنسا
     # ═══════════════════════════════════════
 
     async def open_france_page(self) -> bool:
@@ -79,7 +79,7 @@ class SSHS8:
             return False
 
     # ═══════════════════════════════════════
-    # 2. Create Account — أول واحد
+    # 2. Create Account — نضغطو بأي طريقة
     # ═══════════════════════════════════════
 
     async def create_account(self) -> dict:
@@ -103,28 +103,79 @@ class SSHS8:
         }
 
         try:
-            # ✅ نضغطو على أول زر "Create Account"
-            create_btn = page.locator(
-                'button:has-text("Create Account"), a:has-text("Create Account")'
-            ).first
-            count = await create_btn.count()
-            log.info(f"🔍 عدد أزرار Create Account: {count}")
+            # ✅ نحاولو نضغطو Create Account بكل الطرق
+            clicked = False
 
-            if count > 0:
-                await create_btn.scroll_into_view_if_needed()
-                await page.wait_for_timeout(500)
-                await create_btn.click()
-                log.info("✅ Create Account clicked")
-            else:
-                log.warning("⚠️ مالقيناش Create Account — نجربو Deploy")
-                dep = page.locator('button:has-text("Deploy"), a:has-text("Deploy")').first
-                if await dep.count() > 0:
-                    await dep.scroll_into_view_if_needed()
-                    await dep.click()
-                    log.info("✅ Deploy clicked")
+            # 1. نجربو Playwright locator (button / a / input / span / div)
+            for sel in [
+                'button:has-text("Create Account")',
+                'a:has-text("Create Account")',
+                'input[value="Create Account"]',
+                '[role="button"]:has-text("Create Account")',
+                'span:has-text("Create Account")',
+                'div:has-text("Create Account")',
+            ]:
+                try:
+                    loc = page.locator(sel)
+                    cnt = await loc.count()
+                    log.info(f"🔍 {sel}: count={cnt}")
+                    if cnt > 0:
+                        # نجربو نضغطو أول واحد
+                        for i in range(min(cnt, 3)):
+                            el = loc.nth(i)
+                            try:
+                                if await el.is_visible():
+                                    await el.scroll_into_view_if_needed()
+                                    await page.wait_for_timeout(300)
+                                    await el.click(timeout=5000)
+                                    clicked = True
+                                    log.info(f"✅ Clicked via {sel} #{i}")
+                                    break
+                            except Exception as e:
+                                log.warning(f"⚠️ click {sel} #{i}: {e}")
+                                continue
+                        if clicked:
+                            break
+                except Exception as e:
+                    log.warning(f"⚠️ locator {sel}: {e}")
+                    continue
 
-            await page.wait_for_timeout(5000)
+            # 2. إذا مازال، نجربو JS مباشر
+            if not clicked:
+                log.info("⚠️ نجربو JS للضغط على Create Account")
+                js_clicked = await page.evaluate("""
+                    () => {
+                        const targets = ['create account', 'deploy'];
+                        // ندورو على كل العناصر
+                        for (const el of document.querySelectorAll('button, a, input, span, div')) {
+                            if (el.offsetParent === null) continue;
+                            const t = (el.innerText || el.value || '').trim().toLowerCase();
+                            for (const tg of targets) {
+                                if (t === tg) {
+                                    try {
+                                        el.scrollIntoView({block: 'center'});
+                                        el.click();
+                                        return t;
+                                    } catch (e) {}
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                if js_clicked:
+                    clicked = True
+                    log.info(f"✅ Clicked via JS: {js_clicked}")
+
+            log.info(f"🎯 Create Account clicked: {clicked}")
+
+            # ✅ نستناو باش تتحول الصفحة
+            await page.wait_for_timeout(7000)
             await self._send_photo(page, "2️⃣ بعد Create Account")
+
+            # ✅ نشوفو URL — إلا تبدل معناها دخلنا لصفحة جديدة
+            new_url = page.url
+            log.info(f"🔗 URL بعد Create: {new_url}")
 
             # ✅ نعبيو الحقول إذا ظهرو
             try:
@@ -164,7 +215,6 @@ class SSHS8:
             for sel in [
                 'button:has-text("Generate")',
                 'button:has-text("Submit")',
-                'button:has-text("Create Account")',
                 'button:has-text("Create")',
                 'button:has-text("Get")',
             ]:
@@ -187,7 +237,6 @@ class SSHS8:
                     const out = { host: null, user: null, pass: null, all_text: '' };
                     out.all_text = body;
 
-                    // IPv4
                     const ipv4 = body.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
                     for (const ip of ipv4) {
                         const parts = ip.split('.').map(Number);
@@ -198,7 +247,6 @@ class SSHS8:
                         }
                     }
 
-                    // hostname
                     if (!out.host) {
                         const hostnames = body.match(/\\b([a-z][a-z0-9\\-]{2,63}\\.)+[a-z]{2,}\\b/gi) || [];
                         for (const h of hostnames) {
@@ -212,11 +260,9 @@ class SSHS8:
                         }
                     }
 
-                    // User
                     const user = body.match(/\\bu[0-9]{6,12}\\b/);
                     if (user) out.user = user[0];
 
-                    // Pass
                     const pass = body.match(/(?:password|pass)\\s*[:\\-]\\s*([A-Za-z0-9]{6,16})/i);
                     if (pass) out.pass = pass[1];
 
@@ -236,7 +282,11 @@ class SSHS8:
 
             if not result["host"]:
                 result["success"] = False
-                result["message"] = "ما لقيناش host — شوف آخر screenshot."
+                result["message"] = (
+                    f"ما لقيناش host.\n"
+                    f"URL الحالي: {new_url}\n"
+                    f"شوف الصور باش نعرفو المشكل."
+                )
                 return result
 
             result["success"] = True
