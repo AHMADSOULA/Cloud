@@ -568,7 +568,11 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     browser = StealthBrowser()
     try:
         ctx = await browser.start()
-        ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
+        ssh = SSHS8(ctx, sender=msg, user_tag=user.username or user.first_name)
+
+        # ✅ نعطيوه البوت والـ chat_id باش يصور ويبعث
+        ssh.set_chat(query.message.chat_id)
+        ssh.bot = context.bot
 
         continents = await ssh.open_ssh_websocket()
         log.info(f"🌍 Continents: {continents}")
@@ -630,7 +634,8 @@ async def ssh_continent_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
         if not countries:
             await query.message.edit_text(
-                f"❌ ما لقيناش دول في {continent}.\nجرب قارة أخرى."
+                f"❌ ما لقيناش دول في {continent}.\n"
+                f"شوف الـ screenshots اللي فوق باش نعرفو المشكل."
             )
             return
 
@@ -701,7 +706,7 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
-        # ✅ Screenshot
+        # ✅ Screenshot نهائي
         try:
             if ssh.page:
                 shot_path = f"/tmp/ssh_account_{user.id}.png"
