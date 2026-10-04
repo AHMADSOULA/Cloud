@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113
-- يعبي Password → Create an account → يستخرج Host/User/Pass
+- يعبي Password → Create → يقرا المعلومات من الجدول
 """
 import asyncio
 import random
@@ -58,7 +58,7 @@ class SSHS8:
                 pass
 
     # ═══════════════════════════════════════
-    # 1. فتح صفحة Create ديراكت
+    # 1. فتح صفحة Create
     # ═══════════════════════════════════════
 
     async def open_france_page(self) -> bool:
@@ -69,14 +69,14 @@ class SSHS8:
         try:
             await page.goto(FRANCE_CREATE_URL, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(5000)
-            await self._send_photo(page, "1️⃣ صفحة Create Account")
+            await self._send_photo(page, "1️⃣ صفحة Create")
             return True
         except Exception as e:
             log.error(f"❌ open_france_page: {e}", exc_info=True)
             return False
 
     # ═══════════════════════════════════════
-    # 2. تعبئة Password + Create an account
+    # 2. تعبئة Password + Create
     # ═══════════════════════════════════════
 
     async def create_account(self) -> dict:
@@ -84,79 +84,46 @@ class SSHS8:
         if not page:
             return {"success": False, "error": "no_page"}
 
-        password = generate_password()
-        username = None
-
-        log.info(f"🔑 Pass: {password}")
+        password_input_value = generate_password()
 
         result = {
             "success": False,
-            "username": username,
-            "password": password,
+            "username": None,
+            "password": password_input_value,
             "country": "France",
             "host": None,
             "message": None,
         }
 
         try:
-            # ✅ 1. نجيبو الـ Username اللي معبّي مسبقاً
-            try:
-                username_input = page.locator(
-                    'input[name*="user" i], input[id*="user" i], '
-                    'input[placeholder*="user" i]'
-                ).first
-                if await username_input.count() > 0:
-                    existing = await username_input.input_value()
-                    if existing:
-                        username = existing.strip()
-                        log.info(f"👤 Username موجود: {username}")
-            except Exception as e:
-                log.warning(f"⚠️ username input: {e}")
-
-            if not username:
-                # نولّدو واحد
-                username = "u" + "".join(random.choices(string.digits, k=10))
-                try:
-                    u_inp = page.locator(
-                        'input[name*="user" i], input[id*="user" i], '
-                        'input[placeholder*="user" i]'
-                    ).first
-                    if await u_inp.count() > 0:
-                        await u_inp.click()
-                        await u_inp.fill(username)
-                        log.info(f"✅ username filled: {username}")
-                except Exception as e:
-                    log.warning(f"⚠️ fill username: {e}")
-
-            result["username"] = username
-
-            # ✅ 2. نعبيو الـ Password
-            pass_input = None
+            # ✅ نعبيو Password
+            pass_filled = False
             for sel in [
-                'input[name*="pass" i]', 'input[id*="pass" i]',
-                'input[placeholder*="pass" i]', 'input[type="password"]',
+                'input[type="password"]',
+                'input[name*="pass" i]',
+                'input[id*="pass" i]',
+                'input[placeholder*="pass" i]',
             ]:
                 try:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
-                        pass_input = el
+                        await el.click()
+                        await el.fill("")
+                        await page.wait_for_timeout(200)
+                        await el.fill(password_input_value)
+                        pass_filled = True
+                        log.info(f"✅ password filled: {password_input_value}")
                         break
                 except Exception:
                     continue
 
-            if pass_input:
-                await pass_input.click()
-                await pass_input.fill("")
-                await page.wait_for_timeout(200)
-                await pass_input.fill(password)
-                log.info(f"✅ password filled")
-            else:
+            if not pass_filled:
                 log.warning("⚠️ مالقيناش password input")
 
             await page.wait_for_timeout(1000)
             await self._send_photo(page, "2️⃣ بعد تعبئة Password")
 
-            # ✅ 3. نضغطو Create an account
+            # ✅ نضغطو Create an account
             clicked = False
             for sel in [
                 'button:has-text("Create an account")',
@@ -175,23 +142,17 @@ class SSHS8:
                         clicked = True
                         log.info(f"✅ Clicked via {sel}")
                         break
-                except Exception as e:
-                    log.warning(f"⚠️ {sel}: {e}")
+                except Exception:
                     continue
 
             if not clicked:
-                # JS fallback
                 c = await page.evaluate("""
                     () => {
                         for (const el of document.querySelectorAll('button, a, input[type="submit"]')) {
                             if (el.offsetParent === null) continue;
                             const t = (el.innerText || el.value || '').trim().toLowerCase();
                             if (t.includes('create an account') || t.includes('create account')) {
-                                try {
-                                    el.scrollIntoView({block: 'center'});
-                                    el.click();
-                                    return t;
-                                } catch (e) {}
+                                try { el.scrollIntoView({block: 'center'}); el.click(); return t; } catch (e) {}
                             }
                         }
                         return null;
@@ -203,77 +164,118 @@ class SSHS8:
 
             log.info(f"🎯 Create clicked: {clicked}")
 
-            # ✅ 4. نستناو حتى يظهر الحساب (Loading → Do not refresh)
+            # ✅ نستناو ظهور الجدول (Account successfully created)
             log.info("⏳ نستناو الحساب...")
 
+            # نستناو ظهور "Account successfully created" أو جدول فيه IPv4
             host = None
-            for attempt in range(20):  # 20 × 2s = 40s
+            for attempt in range(25):  # 25 × 2s = 50s
                 await page.wait_for_timeout(2000)
 
-                # نجيبو host
                 found = await page.evaluate("""
                     () => {
-                        const body = document.body.innerText || '';
-                        const out = { host: null, user: null, pass: null };
+                        const out = { host: null, user: null, pass: null, all_text: '' };
+                        out.all_text = document.body.innerText || '';
 
-                        // IPv4
-                        const ipv4 = body.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
-                        for (const ip of ipv4) {
-                            const parts = ip.split('.').map(Number);
-                            if (parts.every(p => p >= 0 && p <= 255) &&
-                                ip !== '0.0.0.0' && ip !== '127.0.0.1') {
-                                out.host = ip;
-                                break;
+                        // ✅ الطريقة 1: ندورو على الصفوف اللي فيها label: IPv4, Username, Password
+                        // نجيبو كل الـ labels والقيم اللي بعدهم
+
+                        // طريقة أ: كل الـ inputs مع labels قريبين
+                        const allInputs = document.querySelectorAll('input[type="text"], input[type="email"], input:not([type])');
+                        for (const inp of allInputs) {
+                            const val = (inp.value || '').trim();
+                            if (!val) continue;
+
+                            // نجيبو النص القريب (label)
+                            let labelText = '';
+                            // parent
+                            let p = inp.parentElement;
+                            for (let i = 0; i < 4 && p; i++) {
+                                const t = (p.innerText || '').toLowerCase();
+                                if (t.includes('ipv4') || t.includes('username') ||
+                                    t.includes('password') || t.includes('domain') ||
+                                    t.includes('host')) {
+                                    labelText = t;
+                                    break;
+                                }
+                                p = p.parentElement;
+                            }
+
+                            if (labelText.includes('ipv4') && !out.host) {
+                                const m = val.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
+                                if (m) out.host = m[0];
+                            }
+                            if ((labelText.includes('username') || labelText.includes('user name')) && !out.user) {
+                                out.user = val;
+                            }
+                            if (labelText.includes('password') && !out.pass) {
+                                out.pass = val;
                             }
                         }
 
-                        // hostname
+                        // طريقة ب: إلا مالقيناش، ندورو بالـ regex على النص
                         if (!out.host) {
-                            const hostnames = body.match(/\\b([a-z][a-z0-9\\-]{2,63}\\.)+[a-z]{2,}\\b/gi) || [];
-                            for (const h of hostnames) {
-                                const hl = h.toLowerCase();
-                                if (!hl.includes('sshs8') && !hl.includes('google') &&
-                                    !hl.includes('youtube') && !hl.includes('facebook') &&
-                                    !hl.includes('example') && !hl.includes('cloudflare')) {
-                                    out.host = h;
+                            // IPv4 من النص — نستثنيو 192.168, 10., 127., 0.0
+                            const ipv4All = out.all_text.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
+                            for (const ip of ipv4All) {
+                                const parts = ip.split('.').map(Number);
+                                if (parts.every(p => p >= 0 && p <= 255) &&
+                                    !ip.startsWith('192.168.') &&
+                                    !ip.startsWith('10.') &&
+                                    !ip.startsWith('172.16.') &&
+                                    ip !== '0.0.0.0' && ip !== '127.0.0.1') {
+                                    out.host = ip;
                                     break;
                                 }
                             }
                         }
 
-                        // User
-                        const u = body.match(/\\bu[0-9]{6,12}\\b/);
-                        if (u) out.user = u[0];
-
-                        // Pass
-                        const p = body.match(/(?:password|pass)\\s*[:\\-]\\s*([A-Za-z0-9]{6,16})/i);
-                        if (p) out.pass = p[1];
+                        // User من الصفحة (regex عام)
+                        if (!out.user) {
+                            const m = out.all_text.match(/(?:username|user)[\\s:]*([a-zA-Z0-9_\\-]{4,20})/i);
+                            if (m) out.user = m[1];
+                        }
+                        // Pass من الصفحة
+                        if (!out.pass) {
+                            const m = out.all_text.match(/(?:password|pass)[\\s:]*([A-Za-z0-9]{6,16})/i);
+                            if (m) out.pass = m[1];
+                        }
 
                         return out;
                     }
                 """)
 
-                if found.get("host"):
+                if found.get("host") and found.get("user") and found.get("pass"):
                     host = found["host"]
-                    log.info(f"✅ Host بعد {(attempt+1)*2}s: {host}")
+                    result["username"] = found["user"]
+                    result["password"] = found["pass"]
+                    log.info(f"✅ معلومات كاملة بعد {(attempt+1)*2}s")
+                    break
+                elif found.get("host") and not host:
+                    host = found["host"]
                     if found.get("user"):
                         result["username"] = found["user"]
                     if found.get("pass"):
                         result["password"] = found["pass"]
-                    break
 
             await self._send_photo(page, "3️⃣ بعد Create")
 
-            log.info(f"🖥️ Host final: {host}")
-            log.info(f"👤 User: {result['username']}")
-            log.info(f"🔑 Pass: {result['password']}")
+            log.info(f"🖥️ Host: {result.get('host')}")
+            log.info(f"👤 User: {result.get('username')}")
+            log.info(f"🔑 Pass: {result.get('password')}")
 
-            if not host:
+            if not result.get("host"):
                 result["success"] = False
-                result["message"] = "ما لقيناش host بعد 40s — شوف آخر screenshot."
+                result["message"] = "ما لقيناش host — شوف آخر screenshot."
                 return result
 
-            result["host"] = host
+            if not result.get("username"):
+                result["username"] = "unknown"
+
+            if not result.get("password"):
+                result["password"] = password_input_value
+
+            result["host"] = result["host"] or host
             result["success"] = True
 
         except Exception as e:
