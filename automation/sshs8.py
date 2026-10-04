@@ -33,58 +33,40 @@ CONTINENTS = [
 class SSHS8:
     def __init__(self, context, sender=None, user_tag="@user"):
         self.context = context
-        self.sender = sender  # message object باش نقدرو نصورو
+        self.sender = sender
         self.user_tag = user_tag or "@user"
         self.page = None
-        self.chat_id = None  # ✅ نحتاجوه للتصوير
+        self.chat_id = None
+        self.bot = None
 
     def set_chat(self, chat_id):
-        """نحددو الـ chat_id باش نقدرو نبعثو الصور"""
         self.chat_id = chat_id
 
     async def _send_photo(self, page, caption: str):
         """نصورو ونبعثو مباشرة عبر البوت"""
-        if not self.chat_id:
-            log.warning("⚠️ chat_id ماشي محدد — ما نقدروش نبعثو صورة")
+        if not self.bot or not self.chat_id:
+            log.warning("⚠️ bot/chat_id ماشي محددين — ما نقدروش نبعثو صورة")
             return
+        path = f"/tmp/sshs8_{int(asyncio.get_event_loop().time()*1000)}.png"
         try:
-            path = f"/tmp/sshs8_{int(asyncio.get_event_loop().time()*1000)}.png"
             await page.screenshot(path=path, full_page=True, timeout=15000)
-
-            # نبعثو عبر الـ context مباشرة (bot)
             with open(path, "rb") as photo:
                 try:
-                    from telegram import Bot
-                    # نحاولو نستعملو self.sender إلا كان متوفر
-                    if self.sender and hasattr(self.sender, "reply_photo"):
-                        await self.sender.reply_photo(photo=photo, caption=f"📸 {caption}"[:1000])
-                    else:
-                        # نستعملو الـ chat_id مباشرة
-                        await self._send_photo_direct(photo, caption, path)
+                    await self.bot.send_photo(
+                        chat_id=self.chat_id,
+                        photo=photo,
+                        caption=f"📸 {caption}"[:1000],
+                    )
+                    log.info(f"📸 Sent: {caption}")
                 except Exception as e:
-                    log.warning(f"⚠️ reply_photo فشل: {e}")
-
+                    log.warning(f"⚠️ send_photo: {e}")
+        except Exception as e:
+            log.warning(f"⚠️ screenshot: {e}")
+        finally:
             try:
                 os.remove(path)
             except Exception:
                 pass
-        except Exception as e:
-            log.warning(f"⚠️ _send_photo: {e}")
-
-    async def _send_photo_direct(self, photo, caption, path):
-        """نبعثو الصورة عبر الـ bot API مباشرة"""
-        try:
-            # نستعملو self.context.bot (ما كاينش هنا) — بدل نستعملو الـ chat_id
-            # الطريقة: نخزنو ref للبوت فـ self
-            if hasattr(self, "bot") and self.bot:
-                with open(path, "rb") as p:
-                    await self.bot.send_photo(
-                        chat_id=self.chat_id,
-                        photo=p,
-                        caption=f"📸 {caption}"[:1000],
-                    )
-        except Exception as e:
-            log.warning(f"⚠️ _send_photo_direct: {e}")
 
     # ═══════════════════════════════════════
     # 1. فتح الموقع
@@ -96,7 +78,6 @@ class SSHS8:
         page = self.page
 
         try:
-            # ✅ step 1: الصفحة الرئيسية
             await page.goto("https://sshs8.com/", wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(4000)
             await self._send_photo(page, "1️⃣ الصفحة الرئيسية")
@@ -108,6 +89,7 @@ class SSHS8:
                 'a:has-text("Menu")',
                 '[aria-label*="Menu" i]',
                 '[class*="menu" i] button',
+                'button:has-text("☰")',
             ]:
                 try:
                     el = page.locator(sel).first
@@ -120,7 +102,6 @@ class SSHS8:
                     continue
 
             if not menu_opened:
-                # نجربو بالـ JS
                 await page.evaluate("""
                     () => {
                         for (const el of document.querySelectorAll('button, a, span, div')) {
@@ -155,7 +136,6 @@ class SSHS8:
                     continue
 
             if not ssh_clicked:
-                # نجربو بـ JS
                 clicked = await page.evaluate("""
                     () => {
                         for (const el of document.querySelectorAll('a, li, span, button, div')) {
@@ -174,9 +154,8 @@ class SSHS8:
             await page.wait_for_timeout(5000)
             await self._send_photo(page, "3️⃣ بعد SSH Websocket")
 
-            # ✅ نستخرجو القارات
             continents = await self._get_continents(page)
-            log.info(f"🌍 القارات اللي لقينا: {continents}")
+            log.info(f"🌍 القارات: {continents}")
 
             if not continents:
                 continents = CONTINENTS
@@ -193,7 +172,6 @@ class SSHS8:
 
     async def _get_continents(self, page) -> list:
         try:
-            # نضغطو على أي عنصر فيه كلمة قارة ونحاولو نلقاوهم
             continents = await page.evaluate("""
                 () => {
                     const out = [];
@@ -201,9 +179,7 @@ class SSHS8:
                     for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, p, div, span, a, button')) {
                         const t = (el.innerText || '').trim();
                         for (const kw of keywords) {
-                            if (t === kw) {
-                                out.push(t);
-                            }
+                            if (t === kw) out.push(t);
                         }
                     }
                     return [...new Set(out)];
@@ -223,17 +199,14 @@ class SSHS8:
             countries = await page.evaluate("""
                 () => {
                     const out = [];
-                    // نلقاو كل "Create Account" و "Server list" ثم نستخرجو اسم الدولة من الأب
                     for (const el of document.querySelectorAll('a, button, span, div')) {
                         const t = (el.innerText || '').trim().toLowerCase();
-                        if (t === 'server list' || t.includes('server list')) {
+                        if (t.includes('server list')) {
                             const parent = el.closest('div, section, article');
                             if (!parent) continue;
-                            // اسم الدولة كيكون فـ عنصر قبل الزر
                             const candidates = parent.querySelectorAll('h1, h2, h3, h4, h5, span, p, div');
                             for (const c of candidates) {
                                 const txt = (c.innerText || '').trim();
-                                // اسم دولة: كلمة أو كلمتين بحروف كبيرة
                                 if (/^[A-Z][a-zA-Z\\s\\-]{2,40}$/.test(txt) &&
                                     txt.length > 3 && txt.length < 40 &&
                                     !txt.toLowerCase().includes('server') &&
@@ -265,11 +238,9 @@ class SSHS8:
         log.info(f"🌍 اختيار القارة: {continent}")
 
         try:
-            # ✅ نضغطو على القارة
             clicked = await page.evaluate(f"""
                 () => {{
                     const target = {continent!r}.toLowerCase();
-                    // نلقاو أعمق عنصر فيه النص
                     let best = null;
                     let bestLen = 99999;
                     for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, p, div, span, a, button')) {{
@@ -293,10 +264,8 @@ class SSHS8:
             await page.wait_for_timeout(5000)
             await self._send_photo(page, f"4️⃣ بعد اختيار {continent}")
 
-            # ✅ نستخرجو الدول
             countries = await self._get_countries_from_page(page)
-            log.info(f"🌍 الدول اللي لقينا فـ {continent}: {countries}")
-
+            log.info(f"🌍 الدول فـ {continent}: {countries}")
             return countries
 
         except Exception as e:
@@ -315,7 +284,6 @@ class SSHS8:
             clicked = await page.evaluate(f"""
                 () => {{
                     const target = {country!r}.toLowerCase();
-                    // نلقاو زر "Server list" قريب من اسم الدولة
                     for (const el of document.querySelectorAll('a, button, span, div')) {{
                         if (el.offsetParent === null) continue;
                         const t = (el.innerText || '').trim().toLowerCase();
@@ -326,7 +294,6 @@ class SSHS8:
                             }}
                         }}
                     }}
-                    // نجربو نضغطو على اسم الدولة مباشرة
                     for (const el of document.querySelectorAll('h1, h2, h3, h4, a, button, div, span')) {{
                         if (el.offsetParent === null) continue;
                         const t = (el.innerText || '').trim().toLowerCase();
@@ -373,10 +340,8 @@ class SSHS8:
         }
 
         try:
-            # ✅ step 6: قبل Create
             await self._send_photo(page, "6️⃣ قبل Create Account")
 
-            # ✅ نضغطو Create Account
             clicked = False
             for sel in [
                 'button:has-text("Create Account")',
@@ -412,7 +377,6 @@ class SSHS8:
             await page.wait_for_timeout(4000)
             await self._send_photo(page, "7️⃣ بعد Create Account")
 
-            # ✅ نعبيو الحقول إذا ظهرو
             try:
                 for sel in [
                     'input[name*="user" i]', 'input[id*="user" i]',
@@ -447,7 +411,6 @@ class SSHS8:
             await page.wait_for_timeout(2000)
             await self._send_photo(page, "8️⃣ بعد تعبئة الحقول")
 
-            # ✅ نضغطو زر Submit/Generate إذا كان كاين
             for sel in [
                 'button:has-text("Generate")',
                 'button:has-text("Submit")',
@@ -466,14 +429,12 @@ class SSHS8:
             await page.wait_for_timeout(7000)
             await self._send_photo(page, "9️⃣ بعد Submit — الصفحة النهائية")
 
-            # ✅ نستخرجو المعلومات
             info = await page.evaluate("""
                 () => {
                     const body = document.body.innerText || '';
                     const out = { host: null, user: null, pass: null, all_text: '' };
                     out.all_text = body;
 
-                    // IPv4
                     const ipv4 = body.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
                     for (const ip of ipv4) {
                         const parts = ip.split('.').map(Number);
@@ -484,7 +445,6 @@ class SSHS8:
                         }
                     }
 
-                    // hostname
                     if (!out.host) {
                         const hostnames = body.match(/\\b([a-z][a-z0-9\\-]{2,63}\\.)+[a-z]{2,}\\b/gi) || [];
                         for (const h of hostnames) {
@@ -498,11 +458,9 @@ class SSHS8:
                         }
                     }
 
-                    // User
                     const user = body.match(/\\bu[0-9]{6,12}\\b/);
                     if (user) out.user = user[0];
 
-                    // Pass
                     const pass = body.match(/(?:password|pass)\\s*[:\\-]\\s*([A-Za-z0-9]{6,16})/i);
                     if (pass) out.pass = pass[1];
 
