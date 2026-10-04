@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113
-- يعبي Password → Create → يقرا المعلومات من الجدول
+- يعبي Password → Create → يقرا IPv4/Username/Password من الجدول
 """
 import asyncio
 import random
@@ -97,7 +97,6 @@ class SSHS8:
 
         try:
             # ✅ نعبيو Password
-            pass_filled = False
             for sel in [
                 'input[type="password"]',
                 'input[name*="pass" i]',
@@ -111,14 +110,10 @@ class SSHS8:
                         await el.fill("")
                         await page.wait_for_timeout(200)
                         await el.fill(password_input_value)
-                        pass_filled = True
                         log.info(f"✅ password filled: {password_input_value}")
                         break
                 except Exception:
                     continue
-
-            if not pass_filled:
-                log.warning("⚠️ مالقيناش password input")
 
             await page.wait_for_timeout(1000)
             await self._send_photo(page, "2️⃣ بعد تعبئة Password")
@@ -145,137 +140,155 @@ class SSHS8:
                 except Exception:
                     continue
 
-            if not clicked:
-                c = await page.evaluate("""
-                    () => {
-                        for (const el of document.querySelectorAll('button, a, input[type="submit"]')) {
-                            if (el.offsetParent === null) continue;
-                            const t = (el.innerText || el.value || '').trim().toLowerCase();
-                            if (t.includes('create an account') || t.includes('create account')) {
-                                try { el.scrollIntoView({block: 'center'}); el.click(); return t; } catch (e) {}
-                            }
-                        }
-                        return null;
-                    }
-                """)
-                if c:
-                    clicked = True
-                    log.info(f"✅ Clicked via JS: {c}")
-
             log.info(f"🎯 Create clicked: {clicked}")
 
-            # ✅ نستناو ظهور الجدول (Account successfully created)
+            # ✅ نستناو ظهور "Account successfully created"
             log.info("⏳ نستناو الحساب...")
 
-            # نستناو ظهور "Account successfully created" أو جدول فيه IPv4
-            host = None
-            for attempt in range(25):  # 25 × 2s = 50s
+            # نستناو أن يظهر IPv4 فالـ body
+            for attempt in range(25):
                 await page.wait_for_timeout(2000)
 
-                found = await page.evaluate("""
+                # نتأكدو واش "Account successfully created" ظهر
+                created = await page.evaluate("""
                     () => {
-                        const out = { host: null, user: null, pass: null, all_text: '' };
-                        out.all_text = document.body.innerText || '';
+                        const body = document.body.innerText || '';
+                        return body.includes('successfully created') ||
+                               body.includes('Account successfully') ||
+                               /\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/.test(body);
+                    }
+                """)
+                if created:
+                    log.info(f"✅ Account created بعد {(attempt+1)*2}s")
+                    break
 
-                        // ✅ الطريقة 1: ندورو على الصفوف اللي فيها label: IPv4, Username, Password
-                        // نجيبو كل الـ labels والقيم اللي بعدهم
+            await page.wait_for_timeout(2000)
 
-                        // طريقة أ: كل الـ inputs مع labels قريبين
-                        const allInputs = document.querySelectorAll('input[type="text"], input[type="email"], input:not([type])');
-                        for (const inp of allInputs) {
-                            const val = (inp.value || '').trim();
-                            if (!val) continue;
+            # ✅ نستخرجو المعلومات من الجدول
+            info = await page.evaluate("""
+                () => {
+                    const out = { host: null, user: null, pass: null, domain: null, all_text: '' };
+                    out.all_text = document.body.innerText || '';
 
-                            // نجيبو النص القريب (label)
-                            let labelText = '';
-                            // parent
-                            let p = inp.parentElement;
-                            for (let i = 0; i < 4 && p; i++) {
-                                const t = (p.innerText || '').toLowerCase();
-                                if (t.includes('ipv4') || t.includes('username') ||
-                                    t.includes('password') || t.includes('domain') ||
-                                    t.includes('host')) {
-                                    labelText = t;
-                                    break;
-                                }
-                                p = p.parentElement;
+                    // ✅ الطريقة 1: ندورو على الـ inputs + الـ label القريب
+                    const inputs = document.querySelectorAll('input');
+                    for (const inp of inputs) {
+                        const val = (inp.value || '').trim();
+                        if (!val || val.length < 2) continue;
+
+                        // نجيبو النص القريب (label / td قبل)
+                        let label = '';
+                        // parent div
+                        let p = inp.parentElement;
+                        for (let i = 0; i < 5 && p; i++) {
+                            const txt = (p.innerText || '').toLowerCase();
+                            if (txt.length < 200) {
+                                label = txt;
+                                break;
+                            }
+                            p = p.parentElement;
+                        }
+
+                        // إذا label فيه ipv4 → هذا host
+                        if (!out.host && /ipv4|^ip\\b|host/i.test(label)) {
+                            const m = val.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
+                            if (m) out.host = m[0];
+                            else if (val.includes('.')) out.host = val;
+                        }
+                        // username
+                        if (!out.user && /username|user\\s*name/i.test(label)) {
+                            out.user = val;
+                        }
+                        // password
+                        if (!out.pass && /password|pass/i.test(label)) {
+                            out.pass = val;
+                        }
+                        // domain
+                        if (!out.domain && /domain/i.test(label)) {
+                            out.domain = val;
+                        }
+                    }
+
+                    // ✅ الطريقة 2: من الجدول — <tr> فيه <td>IPv4</td><td>value</td>
+                    if (!out.host || !out.user || !out.pass) {
+                        const rows = document.querySelectorAll('tr');
+                        for (const row of rows) {
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length < 2) continue;
+                            const label = (cells[0].innerText || '').trim().toLowerCase();
+                            // نجيبو القيمة من cell الثاني أو من input داخلها
+                            let val = (cells[1].innerText || '').trim();
+                            const inpInCell = cells[1].querySelector('input');
+                            if (inpInCell && inpInCell.value) {
+                                val = inpInCell.value.trim();
                             }
 
-                            if (labelText.includes('ipv4') && !out.host) {
+                            if (!val) continue;
+
+                            if (!out.host && /ipv4|^ip$|host/i.test(label)) {
                                 const m = val.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
                                 if (m) out.host = m[0];
                             }
-                            if ((labelText.includes('username') || labelText.includes('user name')) && !out.user) {
+                            if (!out.user && /username|user\\s*name/i.test(label)) {
                                 out.user = val;
                             }
-                            if (labelText.includes('password') && !out.pass) {
+                            if (!out.pass && /password|pass/i.test(label)) {
                                 out.pass = val;
                             }
-                        }
-
-                        // طريقة ب: إلا مالقيناش، ندورو بالـ regex على النص
-                        if (!out.host) {
-                            // IPv4 من النص — نستثنيو 192.168, 10., 127., 0.0
-                            const ipv4All = out.all_text.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
-                            for (const ip of ipv4All) {
-                                const parts = ip.split('.').map(Number);
-                                if (parts.every(p => p >= 0 && p <= 255) &&
-                                    !ip.startsWith('192.168.') &&
-                                    !ip.startsWith('10.') &&
-                                    !ip.startsWith('172.16.') &&
-                                    ip !== '0.0.0.0' && ip !== '127.0.0.1') {
-                                    out.host = ip;
-                                    break;
-                                }
+                            if (!out.domain && /domain/i.test(label)) {
+                                out.domain = val;
                             }
                         }
-
-                        // User من الصفحة (regex عام)
-                        if (!out.user) {
-                            const m = out.all_text.match(/(?:username|user)[\\s:]*([a-zA-Z0-9_\\-]{4,20})/i);
-                            if (m) out.user = m[1];
-                        }
-                        // Pass من الصفحة
-                        if (!out.pass) {
-                            const m = out.all_text.match(/(?:password|pass)[\\s:]*([A-Za-z0-9]{6,16})/i);
-                            if (m) out.pass = m[1];
-                        }
-
-                        return out;
                     }
-                """)
 
-                if found.get("host") and found.get("user") and found.get("pass"):
-                    host = found["host"]
-                    result["username"] = found["user"]
-                    result["password"] = found["pass"]
-                    log.info(f"✅ معلومات كاملة بعد {(attempt+1)*2}s")
-                    break
-                elif found.get("host") and not host:
-                    host = found["host"]
-                    if found.get("user"):
-                        result["username"] = found["user"]
-                    if found.get("pass"):
-                        result["password"] = found["pass"]
+                    // ✅ الطريقة 3: regex على النص الكامل
+                    if (!out.host) {
+                        const ipv4All = out.all_text.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
+                        for (const ip of ipv4All) {
+                            const parts = ip.split('.').map(Number);
+                            if (parts.every(p => p >= 0 && p <= 255) &&
+                                !ip.startsWith('192.168.') &&
+                                !ip.startsWith('10.') &&
+                                !ip.startsWith('172.16.') &&
+                                ip !== '0.0.0.0' && ip !== '127.0.0.1') {
+                                out.host = ip;
+                                break;
+                            }
+                        }
+                    }
+
+                    // username من النص: كيكون بعد "Username"
+                    if (!out.user) {
+                        const m = out.all_text.match(/(?:username|user\\s*name)[\\s:]*([a-zA-Z0-9_\\-]{4,20})/i);
+                        if (m) out.user = m[1];
+                    }
+                    // password من النص
+                    if (!out.pass) {
+                        const m = out.all_text.match(/(?:password|pass)[\\s:]*([A-Za-z0-9]{6,16})/i);
+                        if (m) out.pass = m[1];
+                    }
+
+                    return out;
+                }
+            """)
+
+            log.info(f"🔍 معلومات: host={info.get('host')} user={info.get('user')} pass={info.get('pass')}")
 
             await self._send_photo(page, "3️⃣ بعد Create")
 
-            log.info(f"🖥️ Host: {result.get('host')}")
-            log.info(f"👤 User: {result.get('username')}")
-            log.info(f"🔑 Pass: {result.get('password')}")
+            log.info(f"🖥️ Host: {info.get('host')}")
+            log.info(f"👤 User: {info.get('user')}")
+            log.info(f"🔑 Pass: {info.get('pass')}")
 
-            if not result.get("host"):
+            result["host"] = info.get("host")
+            result["username"] = info.get("user") or "unknown"
+            result["password"] = info.get("pass") or password_input_value
+
+            if not result["host"]:
                 result["success"] = False
                 result["message"] = "ما لقيناش host — شوف آخر screenshot."
                 return result
 
-            if not result.get("username"):
-                result["username"] = "unknown"
-
-            if not result.get("password"):
-                result["password"] = password_input_value
-
-            result["host"] = result["host"] or host
             result["success"] = True
 
         except Exception as e:
