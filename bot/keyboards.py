@@ -26,3 +26,12 @@ def admin_menu():
         [InlineKeyboardButton("▶️ تشغيل البوت للجميع", callback_data="admin_start_all")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
     ])
+
+
+def ssh_countries_menu(countries: list):
+    """قائمة الدول كأزرار"""
+    rows = []
+    for i, c in enumerate(countries[:60]):
+        rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
+    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
+    return InlineKeyboardMarkup(rows)
