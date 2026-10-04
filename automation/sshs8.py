@@ -104,7 +104,9 @@ class SSHS8:
 
         try:
             # ✅ نضغطو على أول زر "Create Account"
-            create_btn = page.locator('button:has-text("Create Account"), a:has-text("Create Account")').first
+            create_btn = page.locator(
+                'button:has-text("Create Account"), a:has-text("Create Account")'
+            ).first
             count = await create_btn.count()
             log.info(f"🔍 عدد أزرار Create Account: {count}")
 
@@ -115,7 +117,6 @@ class SSHS8:
                 log.info("✅ Create Account clicked")
             else:
                 log.warning("⚠️ مالقيناش Create Account — نجربو Deploy")
-                # نجربو Deploy
                 dep = page.locator('button:has-text("Deploy"), a:has-text("Deploy")').first
                 if await dep.count() > 0:
                     await dep.scroll_into_view_if_needed()
