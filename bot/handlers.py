@@ -72,7 +72,7 @@ queue = JobQueue()
 
 
 # ═══════════════════════════════════════════
-# 3 ملفات DarkTunnel
+# 3 ملفات DarkTunnel (Cloud Run)
 # ═══════════════════════════════════════════
 
 DARK_FILES = [
@@ -86,9 +86,16 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2NybGZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
+
+
+# ═══════════════════════════════════════════
+# SSH DarkTunnel (sshs8.com)
+# ═══════════════════════════════════════════
+
+SSH_DARK_TEMPLATE = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
 
 
 def _b64_pad(s: str) -> str:
@@ -123,6 +130,30 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         return None
 
 
+def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
+    """يبدل host/username/password في ملف SSH dark"""
+    try:
+        raw = SSH_DARK_TEMPLATE.split("darktunnel://", 1)[1].strip()
+        raw = _b64_pad(raw)
+        decoded = base64.b64decode(raw.encode("utf-8")).decode("utf-8")
+        data = json.loads(decoded)
+
+        ssh_cfg = data.get("sshTunnelConfig", {}).get("sshConfig", {})
+        if host:
+            ssh_cfg["host"] = host
+        if username:
+            ssh_cfg["username"] = username
+        if password:
+            ssh_cfg["password"] = password
+
+        raw2 = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        new_b64 = base64.b64encode(raw2).decode("utf-8")
+        return "darktunnel://" + new_b64
+    except Exception as e:
+        log.error(f"❌ build_ssh_dark: {e}", exc_info=True)
+        return None
+
+
 def is_admin(user_id: int) -> bool:
     return user_id == config.ADMIN_ID
 
@@ -144,7 +175,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ✅ إذا البوت موقف للجميع
     if await db.is_globally_stopped():
         await update.message.reply_text(
             "⛔ *البوت متوقف حالياً*\n\nرايح يرجع يخدم قريباً. جرب من بعد.",
@@ -270,7 +300,6 @@ def is_direct_addsession_url(url: str) -> bool:
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
-    # ✅ إذا البوت موقف للجميع
     if await db.is_globally_stopped() and not is_admin(user.id):
         await update.message.reply_text(
             "⛔ *البوت متوقف حالياً*\n\nجرب من بعد.",
@@ -476,6 +505,144 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
+# SSH WebSocket (sshs8.com)
+# ═══════════════════════════════════════════
+
+async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await update.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await update.message.reply_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    msg = await update.message.reply_text("⏳ جاري فتح sshs8.com...")
+
+    from automation.sshs8 import SSHS8
+
+    browser = StealthBrowser()
+    try:
+        ctx = await browser.start()
+        ssh = SSHS8(ctx, sender=msg, user_tag=user.username or user.first_name)
+
+        countries = await ssh.open_ssh_websocket()
+
+        if not countries:
+            try:
+                await msg.edit_text("❌ ما لقيناش الدول.")
+            except Exception:
+                pass
+            await browser.close()
+            return
+
+        context.user_data["ssh_countries"] = countries
+        context.user_data["ssh_obj"] = ssh
+        context.user_data["ssh_browser"] = browser
+
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        rows = []
+        for i, c in enumerate(countries[:60]):
+            rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
+        kb = InlineKeyboardMarkup(rows)
+
+        try:
+            await msg.edit_text(
+                f"🌍 *اختر الدولة:*\n\n({len(countries)} متوفرة)",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=kb,
+            )
+        except Exception:
+            pass
+
+    except Exception as e:
+        log.exception("فشل SSH")
+        try:
+            await msg.edit_text(f"❌ فشل: {str(e)[:300]}")
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    idx = int(query.data.split(":")[1])
+
+    countries = context.user_data.get("ssh_countries", [])
+    ssh = context.user_data.get("ssh_obj")
+    browser = context.user_data.get("ssh_browser")
+
+    if not ssh or idx >= len(countries):
+        await query.message.reply_text("❌ انتهت الجلسة.")
+        return
+
+    country = countries[idx]
+    await query.message.edit_text(f"⏳ جاري إنشاء حساب {country}...")
+
+    try:
+        result = await ssh.create_account(country)
+
+        if not result.get("success"):
+            await query.message.edit_text("❌ فشل إنشاء الحساب.")
+            return
+
+        host = result.get("host")
+        username = result.get("username")
+        password = result.get("password")
+
+        new_uri = build_ssh_dark_with_creds(host, username, password)
+
+        if not new_uri:
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
+            return
+
+        bio = io.BytesIO(new_uri.encode("utf-8"))
+        bio.name = f"SSH - {country}.dark"
+        bio.seek(0)
+
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=bio,
+            filename=bio.name,
+            caption=(
+                f"✅ *SSH Account*\n\n"
+                f"🌍 الدولة: {country}\n"
+                f"🖥️ Host: `{host or '-'}`\n"
+                f"👤 User: `{username}`\n"
+                f"🔑 Pass: `{password}`"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        context.user_data.pop("ssh_countries", None)
+        context.user_data.pop("ssh_obj", None)
+        context.user_data.pop("ssh_browser", None)
+
+        try:
+            await ssh.close()
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+        await query.message.delete()
+
+    except Exception as e:
+        log.exception("فشل SSH country")
+        await query.message.reply_text(f"❌ فشل: {str(e)[:300]}")
+
+
+# ═══════════════════════════════════════════
 # ADMIN
 # ═══════════════════════════════════════════
 
@@ -625,124 +792,4 @@ async def admin_start_all(query):
         await query.message.edit_text(
             "▶️ *تم تشغيل البوت للجميع*\n\n"
             "✅ المستخدمين المسموحين رايح يقدرون يستعملو.",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=admin_menu(),
-        )
-    except Exception:
-        pass
-
-
-# ═══════════════════════════════════════════
-# handle_admin_input
-# ═══════════════════════════════════════════
-
-async def handle_admin_input(update, context, text):
-    mode = context.user_data.get("await")
-    if not mode:
-        return False
-
-    user = update.effective_user
-    if not is_admin(user.id):
-        context.user_data.pop("await", None)
-        return False
-
-    context.user_data.pop("await", None)
-
-    try:
-        if mode == "grant":
-            uid = int(text)
-            await db.set_access(uid, 1)
-            await update.message.reply_text(f"✅ تم تفعيل `{uid}`", parse_mode=ParseMode.MARKDOWN)
-
-        elif mode == "ban":
-            uid = int(text)
-            await db.set_ban(uid, 1)
-            await update.message.reply_text(f"🚫 تم حظر `{uid}`", parse_mode=ParseMode.MARKDOWN)
-
-        elif mode == "priority":
-            uid = int(text)
-            await db.set_priority(uid, 100)
-            await update.message.reply_text(f"⚡ تم زيادة سرعة `{uid}`", parse_mode=ParseMode.MARKDOWN)
-
-        elif mode == "pause":
-            uid = int(text)
-            u = await db.get_user(uid)
-            if u:
-                new_val = 0 if u.get("access") else 1
-                await db.set_access(uid, new_val)
-                state = "تشغيل" if new_val else "توقيف"
-                await update.message.reply_text(f"⏸️ تم {state} `{uid}`", parse_mode=ParseMode.MARKDOWN)
-
-        elif mode == "broadcast":
-            users = await db.get_all_users()
-            sent = 0
-            for u in users:
-                try:
-                    await context.bot.send_message(chat_id=u["user_id"], text=text)
-                    sent += 1
-                except Exception:
-                    pass
-            await update.message.reply_text(f"📢 تم الإرسال لـ {sent} مستخدم")
-
-    except Exception as e:
-        await update.message.reply_text(f"❌ فشل: {e}")
-
-    return True
-
-
-# ═══════════════════════════════════════════
-# button_handler
-# ═══════════════════════════════════════════
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = update.effective_user
-    data = query.data
-
-    if data == "status":
-        await status_cmd(update, context)
-        return
-
-    if data == "back_main":
-        if is_admin(user.id):
-            try:
-                await query.message.edit_text(
-                    messages.WELCOME_ADMIN,
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=main_menu(True),
-                    disable_web_page_preview=True,
-                )
-            except Exception:
-                pass
-        return
-
-    if data.startswith("admin") and not is_admin(user.id):
-        await query.message.reply_text("🚫 نتا ماشي ADMIN")
-        return
-
-    if data == "admin":
-        await admin_panel(query, context)
-    elif data == "admin_stats":
-        await admin_stats(query)
-    elif data == "admin_users":
-        await admin_users(query)
-    elif data == "admin_banned":
-        await admin_banned(query)
-    elif data == "admin_requests":
-        await admin_requests(query)
-    elif data == "admin_priority":
-        await admin_priority(query, context)
-    elif data == "admin_ban":
-        await admin_ban(query, context)
-    elif data == "admin_grant":
-        await admin_grant(query, context)
-    elif data == "admin_pause":
-        await admin_pause(query, context)
-    elif data == "admin_broadcast":
-        await admin_broadcast(query, context)
-    elif data == "admin_stop_all":
-        await admin_stop_all(query)
-    elif data == "admin_start_all":
-        await admin_start_all(query)
+            parse_mode=ParseMode.MARK
