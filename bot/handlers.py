@@ -87,7 +87,7 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQtMTMueXQzLmdncGh0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQxNDAwODYxMjEyMy5ldXJvcGUtd2VzdDEucnVuLmFwcCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
 
@@ -95,9 +95,6 @@ DARK_FILES = [
 # ═══════════════════════════════════════════
 # SSH DarkTunnel
 # ═══════════════════════════════════════════
-
-SSH_TEMPLATE_PLAIN = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
-
 
 def _b64_pad(s: str) -> str:
     s = s.strip()
@@ -132,6 +129,10 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
+    """
+    يبني ملف dark بنفس البنية بالضبط
+    - Port: 22 ثابت
+    """
     try:
         outer = {
             "type": "SSH",
@@ -141,19 +142,21 @@ def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
                     "host": host or "",
                     "port": 22,
                     "username": username or "",
-                    "password": password or ""
+                    "password": password or "",
                 },
                 "injectConfig": {
                     "mode": "PROXY",
                     "proxyHost": "34.43.46.91",
                     "proxyPort": 443,
-                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
-                }
-            }
+                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
+                },
+            },
         }
+
         outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
         outer_b64 = base64.b64encode(outer_json.encode("utf-8")).decode("utf-8")
         return "darktunnel://" + outer_b64
+
     except Exception as e:
         log.error(f"❌ build_ssh_dark: {e}", exc_info=True)
         return None
@@ -533,26 +536,40 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
 
+    if query:
+        chat_id = query.message.chat_id
+    else:
+        chat_id = update.message.chat_id
+
     if await db.is_globally_stopped() and not is_admin(user.id):
         try:
-            await query.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="⛔ *البوت متوقف حالياً*",
+                parse_mode=ParseMode.MARKDOWN,
+            )
         except Exception:
             pass
         return
 
     if not await db.has_access(user.id):
         try:
-            await query.message.reply_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="🔒 ما عندكش صلاحية.",
+                parse_mode=ParseMode.MARKDOWN,
+            )
         except Exception:
             pass
         return
 
     try:
         msg = await context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             text="⏳ جاري إنشاء حساب SSH France...",
         )
-    except Exception:
+    except Exception as e:
+        log.error(f"❌ send msg: {e}")
         return
 
     try:
@@ -568,8 +585,8 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     browser = StealthBrowser()
     try:
         ctx = await browser.start()
-        ssh = SSHS8(ctx, sender=msg, user_tag=user.username or user.first_name)
-        ssh.set_chat(query.message.chat_id)
+        ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
+        ssh.set_chat(chat_id)
         ssh.bot = context.bot
 
         ok = await ssh.open_france_page()
@@ -609,27 +626,9 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             return
 
-        # ✅ Screenshot نهائي
-        try:
-            if ssh.page:
-                shot_path = f"/tmp/ssh_account_{user.id}.png"
-                await ssh.page.screenshot(path=shot_path, full_page=True, timeout=10000)
-                with open(shot_path, "rb") as photo:
-                    await context.bot.send_photo(
-                        chat_id=query.message.chat_id,
-                        photo=photo,
-                        caption="📸 صفحة الحساب — France",
-                    )
-                try:
-                    os.remove(shot_path)
-                except Exception:
-                    pass
-        except Exception as e:
-            log.warning(f"⚠️ screenshot: {e}")
-
         # ✅ معلومات الحساب
         await context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             text=(
                 f"✅ *SSH Account*\n\n"
                 f"🌍 الدولة: France 🇫🇷\n"
@@ -641,19 +640,25 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ ملف dark
+        # ✅ بناء ملف dark بنفس البنية
         new_uri = build_ssh_dark_with_creds(host, username, password)
         if not new_uri:
             await msg.edit_text("❌ فشل بناء ملف dark.")
+            try:
+                await ssh.close()
+                await browser.close()
+            except Exception:
+                pass
             return
 
-        filename = "SSH - France.dark"
+        # ✅ اسم الملف: SSH_4DAY🇫🇷.dark
+        filename = "SSH_4DAY🇫🇷.dark"
         bio = io.BytesIO(new_uri.encode("utf-8"))
         bio.name = filename
         bio.seek(0)
 
         await context.bot.send_document(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             document=bio,
             filename=filename,
             caption=f"📁 {filename}",
