@@ -1,6 +1,6 @@
 """
 automation/sshs8.py
-- sshs8.com → SSH Websocket → قارة → دولة → Create Account → استخراج بيانات
+- sshs8.com → Menu → SSH Websocket → قارة → دولة → Create Account → استخراج بيانات
 """
 import asyncio
 import random
@@ -115,17 +115,13 @@ class SSHS8:
             await page.wait_for_timeout(4000)
             await self._shot(page, "3️⃣ SSH Websocket")
 
-            # ✅ نستخرجو القارات + الدول
+            # ✅ نستخرجو القارات
             continents = await self._get_continents(page)
             log.info(f"🌍 القارات: {continents}")
-
-            countries = await self._get_countries_from_page(page)
-            log.info(f"🌍 الدول فالصفحة الحالية: {len(countries)}")
 
             if not continents:
                 continents = CONTINENTS
 
-            # نرجعو القارات باش المستخدم يختار
             return continents
 
         except Exception as e:
@@ -141,13 +137,11 @@ class SSHS8:
             continents = await page.evaluate("""
                 () => {
                     const out = [];
-                    const keywords = ['Europe', 'Asia', 'America', 'Africa', 'West', 'East', 'North', 'South'];
+                    const keywords = ['Europe', 'Asia', 'America', 'Africa'];
                     for (const el of document.querySelectorAll('h1, h2, h3, h4, p, div, span')) {
                         const t = (el.innerText || '').trim();
                         if (t.length > 5 && t.length < 60 &&
-                            keywords.some(k => t.includes(k)) &&
-                            !t.toLowerCase().includes('create') &&
-                            !t.toLowerCase().includes('server list')) {
+                            keywords.some(k => t.includes(k))) {
                             out.push(t);
                         }
                     }
@@ -160,7 +154,7 @@ class SSHS8:
             return []
 
     # ═══════════════════════════════════════
-    # 3. استخراج الدول من الصفحة
+    # 3. استخراج الدول
     # ═══════════════════════════════════════
 
     async def _get_countries_from_page(self, page) -> list:
@@ -169,15 +163,13 @@ class SSHS8:
                 () => {
                     const out = [];
                     for (const el of document.querySelectorAll('a, button, li, span')) {
-                        const t = (el.innerText || '').trim();
-                        if (t.toLowerCase().includes('server list') ||
-                            t.toLowerCase().includes('create account')) {
-                            // parent كيحتوي على اسم الدولة
+                        const t = (el.innerText || '').trim().toLowerCase();
+                        if (t.includes('server list') || t.includes('create account')) {
                             const parent = el.closest('div');
                             if (parent) {
                                 const lines = (parent.innerText || '').split('\\n').map(l => l.trim()).filter(l => l);
                                 for (const l of lines) {
-                                    if (l.match(/^[A-Z][a-z]+(\\s+[A-Z][a-z]+)*$/) && l.length > 3 && l.length < 40) {
+                                    if (/^[A-Z][a-z]+(\\s+[A-Z][a-z]+)*$/.test(l) && l.length > 3 && l.length < 40) {
                                         out.push(l);
                                     }
                                 }
@@ -193,7 +185,7 @@ class SSHS8:
             return []
 
     # ═══════════════════════════════════════
-    # 4. اختيار قارة → يفتح صفحة القارة
+    # 4. اختيار قارة
     # ═══════════════════════════════════════
 
     async def select_continent(self, continent: str) -> list:
@@ -201,26 +193,23 @@ class SSHS8:
         log.info(f"🌍 اختيار القارة: {continent}")
 
         try:
-            clicked = await page.evaluate(f"""
+            await page.evaluate(f"""
                 () => {{
                     const target = {continent!r}.toLowerCase();
                     for (const el of document.querySelectorAll('h1, h2, h3, h4, p, div, a, button, span')) {{
                         const t = (el.innerText || '').trim().toLowerCase();
                         if (t === target) {{
-                            try {{ el.click(); return t; }} catch (e) {{}}
+                            try {{ el.click(); return; }} catch (e) {{}}
                         }}
                     }}
-                    return null;
                 }}
             """)
 
             await page.wait_for_timeout(4000)
             await self._shot(page, f"4️⃣ {continent}")
 
-            # نستخرجو الدول من الصفحة الجديدة
             countries = await self._get_countries_from_page(page)
             log.info(f"🌍 الدول: {countries}")
-
             return countries
 
         except Exception as e:
@@ -228,7 +217,7 @@ class SSHS8:
             return []
 
     # ═══════════════════════════════════════
-    # 5. اختيار دولة → يفتح صفحة الدولة
+    # 5. اختيار دولة
     # ═══════════════════════════════════════
 
     async def select_country(self, country: str) -> bool:
@@ -236,7 +225,6 @@ class SSHS8:
         log.info(f"🌍 اختيار الدولة: {country}")
 
         try:
-            # نضغطو على "Server list" القريبة من الدولة
             clicked = await page.evaluate(f"""
                 () => {{
                     const target = {country!r}.toLowerCase();
@@ -254,7 +242,6 @@ class SSHS8:
             """)
 
             if not clicked:
-                # نجربو نضغطو على اسم الدولة مباشرة
                 await page.evaluate(f"""
                     () => {{
                         const target = {country!r}.toLowerCase();
@@ -334,12 +321,8 @@ class SSHS8:
             await page.wait_for_timeout(3000)
             await self._shot(page, "6️⃣ بعد Create Account")
 
-            # ✅ نعبيو الحقول username/password إذا ظهرو
-            # نلقاو inputs
+            # ✅ نعبيو الحقول
             try:
-                username_input = None
-                password_input = None
-
                 for sel in [
                     'input[name*="user" i]', 'input[id*="user" i]',
                     'input[placeholder*="user" i]',
@@ -347,7 +330,8 @@ class SSHS8:
                     try:
                         el = page.locator(sel).first
                         if await el.count() > 0 and await el.is_visible():
-                            username_input = el
+                            await el.click()
+                            await el.fill(username)
                             break
                     except Exception:
                         continue
@@ -359,53 +343,43 @@ class SSHS8:
                     try:
                         el = page.locator(sel).first
                         if await el.count() > 0 and await el.is_visible():
-                            password_input = el
+                            await el.click()
+                            await el.fill(password)
                             break
                     except Exception:
                         continue
-
-                if username_input:
-                    await username_input.click()
-                    await username_input.fill(username)
-                if password_input:
-                    await password_input.click()
-                    await password_input.fill(password)
-
             except Exception as e:
                 log.warning(f"⚠️ inputs: {e}")
 
             await page.wait_for_timeout(2000)
             await self._shot(page, "7️⃣ بعد تعبئة الحقول")
 
-            # ✅ ندورو على زر Generate/Submit إذا كان كاين
-            try:
-                for sel in [
-                    'button:has-text("Generate")',
-                    'button:has-text("Submit")',
-                    'button:has-text("Create")',
-                    'button:has-text("Get")',
-                ]:
-                    try:
-                        el = page.locator(sel).first
-                        if await el.count() > 0 and await el.is_visible():
-                            await el.click()
-                            log.info(f"✅ {sel} clicked")
-                            break
-                    except Exception:
-                        continue
-            except Exception:
-                pass
+            # ✅ زر Generate/Submit
+            for sel in [
+                'button:has-text("Generate")',
+                'button:has-text("Submit")',
+                'button:has-text("Create")',
+                'button:has-text("Get")',
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0 and await el.is_visible():
+                        await el.click()
+                        log.info(f"✅ {sel} clicked")
+                        break
+                except Exception:
+                    continue
 
             await page.wait_for_timeout(6000)
             await self._shot(page, "8️⃣ بعد Submit")
 
-            # ✅ نستخرجو Host/User/Pass
+            # ✅ استخراج المعلومات
             info = await page.evaluate("""
                 () => {
                     const body = document.body.innerText || '';
-                    const out = { host: null, user: null, pass: null };
+                    const out = { host: null, user: null, pass: null, all_text: '' };
+                    out.all_text = body;
 
-                    // Host (IPv4)
                     const ipv4 = body.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
                     for (const ip of ipv4) {
                         const parts = ip.split('.').map(Number);
@@ -416,7 +390,6 @@ class SSHS8:
                         }
                     }
 
-                    // Host (hostname)
                     if (!out.host) {
                         const hostnames = body.match(/\\b([a-z][a-z0-9\\-]{2,63}\\.)+[a-z]{2,}\\b/gi) || [];
                         for (const h of hostnames) {
@@ -430,11 +403,9 @@ class SSHS8:
                         }
                     }
 
-                    // User (u + أرقام)
                     const user = body.match(/\\bu[0-9]{6,12}\\b/);
                     if (user) out.user = user[0];
 
-                    // Pass (بعد كلمة password)
                     const pass = body.match(/(?:password|pass)\\s*[:\\-]\\s*([A-Za-z0-9]{6,16})/i);
                     if (pass) out.pass = pass[1];
 
@@ -442,7 +413,8 @@ class SSHS8:
                 }
             """)
 
-            log.info(f"🔍 info: {info}")
+            log.info(f"🔍 info: {info.get('host')} | {info.get('user')} | {info.get('pass')}")
+            log.info(f"📄 All text preview: {info.get('all_text', '')[:800]}")
 
             if info.get("host"):
                 result["host"] = info["host"]
