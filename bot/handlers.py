@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import base64
 import json
 import datetime
@@ -649,14 +650,27 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
-        # ✅ بناء ملف dark
-        new_uri = build_ssh_dark_with_creds(host, username, password)
+        # ✅ 1. Screenshot من الصفحة اللي فيها معلومات الحساب
+        try:
+            if ssh.page:
+                shot_path = f"/tmp/ssh_account_{user.id}.png"
+                await ssh.page.screenshot(path=shot_path, full_page=True, timeout=10000)
 
-        if not new_uri:
-            await query.message.edit_text("❌ فشل بناء ملف dark.")
-            return
+                with open(shot_path, "rb") as photo:
+                    await context.bot.send_photo(
+                        chat_id=query.message.chat_id,
+                        photo=photo,
+                        caption=f"📸 صفحة الحساب — {country}",
+                    )
 
-        # ✅ إرسال معلومات الحساب
+                try:
+                    os.remove(shot_path)
+                except Exception:
+                    pass
+        except Exception as e:
+            log.warning(f"⚠️ فشل إرسال screenshot: {e}")
+
+        # ✅ 2. معلومات الحساب
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=(
@@ -670,7 +684,13 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ إرسال الملف
+        # ✅ 3. بناء ملف dark
+        new_uri = build_ssh_dark_with_creds(host, username, password)
+
+        if not new_uri:
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
+            return
+
         safe_country = "".join(c for c in country if c.isalnum() or c in " -_")[:30]
         filename = f"SSH - {safe_country}.dark"
 
@@ -685,7 +705,7 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             caption=f"📁 {filename}",
         )
 
-        # ✅ تنظيف الجلسة
+        # ✅ 4. تنظيف الجلسة
         context.user_data.pop("ssh_countries", None)
         context.user_data.pop("ssh_obj", None)
         context.user_data.pop("ssh_browser", None)
