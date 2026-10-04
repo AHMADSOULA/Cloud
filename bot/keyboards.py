@@ -4,6 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 def main_menu(is_admin: bool = False):
     rows = [
         [InlineKeyboardButton("📊 حالتي", callback_data="status")],
+        [InlineKeyboardButton("🔐 SSH WebSocket", callback_data="ssh_ws")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton("⚙️ ADMIN", callback_data="admin")])
