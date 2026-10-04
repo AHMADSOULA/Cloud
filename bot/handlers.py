@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from bot import messages
-from bot.keyboards import main_menu, admin_menu
+from bot.keyboards import main_menu, admin_menu, ssh_countries_menu
 from database import db
 from utils.helpers import extract_urls
 from utils.logger import get_logger
@@ -86,7 +86,7 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2NybGZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2NybGZddXNlci1hZ2VudDogRkJBVi8wLjAgW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
 
@@ -131,7 +131,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
-    """يبدل host/username/password في ملف SSH dark"""
     try:
         raw = SSH_DARK_TEMPLATE.split("darktunnel://", 1)[1].strip()
         raw = _b64_pad(raw)
@@ -266,6 +265,21 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.clear_session(user.id)
+
+    # ✅ نغلقو SSH
+    ssh = context.user_data.pop("ssh_obj", None)
+    if ssh:
+        try:
+            await ssh.close()
+        except Exception:
+            pass
+    browser = context.user_data.pop("ssh_browser", None)
+    if browser:
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
     b = context.bot_data.pop(f"browser_{user.id}", None)
     if b:
         try:
@@ -509,6 +523,9 @@ async def process_queue(chat_id, context):
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """المستخدم ضغط SSH WebSocket"""
+    log.info("🔐 SSH WebSocket clicked")
+
     user = update.effective_user
 
     if await db.is_globally_stopped() and not is_admin(user.id):
@@ -521,7 +538,15 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("⏳ جاري فتح sshs8.com...")
 
-    from automation.sshs8 import SSHS8
+    try:
+        from automation.sshs8 import SSHS8
+    except Exception as e:
+        log.error(f"❌ import sshs8: {e}")
+        try:
+            await msg.edit_text(f"❌ خطأ: {e}")
+        except Exception:
+            pass
+        return
 
     browser = StealthBrowser()
     try:
@@ -529,6 +554,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ssh = SSHS8(ctx, sender=msg, user_tag=user.username or user.first_name)
 
         countries = await ssh.open_ssh_websocket()
+        log.info(f"🌍 Countries: {len(countries)}")
 
         if not countries:
             try:
@@ -538,15 +564,13 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await browser.close()
             return
 
+        # ✅ نخزنو
         context.user_data["ssh_countries"] = countries
         context.user_data["ssh_obj"] = ssh
         context.user_data["ssh_browser"] = browser
 
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        rows = []
-        for i, c in enumerate(countries[:60]):
-            rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
-        kb = InlineKeyboardMarkup(rows)
+        # ✅ نبعثو الدول
+        kb = ssh_countries_menu(countries)
 
         try:
             await msg.edit_text(
@@ -570,6 +594,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """المستخدم اختار دولة"""
     query = update.callback_query
     await query.answer()
 
@@ -867,17 +892,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     data = query.data
+    log.info(f"🔘 callback: {data}")
 
-    if data == "status":
-        await status_cmd(update, context)
-        return
-
+    # ✅ SSH
     if data == "ssh_ws":
-        await handle_ssh(update, context)
+        try:
+            await handle_ssh(update, context)
+        except Exception as e:
+            log.exception("فشل SSH")
+            try:
+                await query.message.reply_text(f"❌ {str(e)[:200]}")
+            except Exception:
+                pass
         return
 
     if data.startswith("ssh_country:"):
-        await ssh_country_handler(update, context)
+        try:
+            await ssh_country_handler(update, context)
+        except Exception as e:
+            log.exception("فشل SSH country")
+        return
+
+    if data == "status":
+        await status_cmd(update, context)
         return
 
     if data == "back_main":
