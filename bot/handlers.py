@@ -95,7 +95,6 @@ DARK_FILES = [
 # SSH DarkTunnel (مشفر)
 # ═══════════════════════════════════════════
 
-# ✅ القالب الأصلي (غير مشفر)
 SSH_TEMPLATE_PLAIN = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
 
 
@@ -133,23 +132,23 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
-    يبني ملف SSH dark جديد:
+    يبني ملف SSH dark:
     - host / username / password: يتغيرو
     - port: 22 (ثابت)
-    - ملف مشفر (encryptedLockedConfig)
+    - يُشفّر (encryptedLockedConfig)
     """
     try:
-        # ✅ نبنيو config جديد
+        # ✅ inner config (اللي رايح يتشفر)
         inner_config = {
-            "sshConfig": {
+            "v2rayConfig": {
                 "host": host,
                 "port": 22,
                 "username": username,
-                "password": password
-            },
-            "injectConfig": {
-                "enabled": True,
-                "mode": "PROXY"
+                "password": password,
+                "injectConfig": {
+                    "enabled": True,
+                    "mode": "PROXY"
+                }
             }
         }
 
@@ -157,7 +156,7 @@ def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
         inner_json = json.dumps(inner_config, ensure_ascii=False, separators=(",", ":"))
         inner_b64 = base64.b64encode(inner_json.encode("utf-8")).decode("utf-8")
 
-        # ✅ الملف الخارجي (نفس صيغة المثال)
+        # ✅ outer (نفس صيغة المثال)
         outer = {
             "type": "SSH",
             "name": "SSH",
@@ -568,10 +567,11 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
+    # ✅ الرسالة: "انتظر" فقط
     try:
         msg = await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text="⏳ جاري فتح sshs8.com...",
+            text="⏳ انتظر...",
         )
     except Exception:
         return
@@ -657,7 +657,7 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         username = result.get("username")
         password = result.get("password")
 
-        # ✅ نبنيو ملف dark مشفر (host + username + password + port=22)
+        # ✅ ملف مشفر
         new_uri = build_ssh_dark_with_creds(host, username, password)
 
         if not new_uri:
