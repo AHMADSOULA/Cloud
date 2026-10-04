@@ -21,6 +21,48 @@ def generate_password():
     return "".join(random.choices(chars, k=10))
 
 
+# كلمات ممنوعة باش ما ناخذوهاش كـ username/pass
+FORBIDDEN_WORDS = {
+    'copy', 'copied', 'show', 'hide', 'value', 'field', 'label',
+    'username', 'password', 'ipv4', 'domain', 'port', 'ssl', 'tls',
+    'none', 'null', 'unknown', 'true', 'false', 'yes', 'no',
+    'create', 'account', 'free', 'ssh', 'websocket', 'server',
+    'loading', 'please', 'wait', 'error', 'success', 'info',
+}
+
+
+def is_valid_value(val: str, min_len: int = 3) -> bool:
+    """نتحققو واش القيمة صحيحة (ماشي كلمة محجوزة، طول مناسب...)"""
+    if not val:
+        return False
+    v = val.strip().lower()
+    if len(v) < min_len:
+        return False
+    if v in FORBIDDEN_WORDS:
+        return False
+    # ما تكونش كلشي حروف صغيرة وكلمة واحدة (بحال "copy")
+    if len(v) <= 6 and v.isalpha() and v.islower():
+        return False
+    return True
+
+
+def is_valid_ip(val: str) -> bool:
+    """نتحققو واش IP صحيح"""
+    if not val:
+        return False
+    m = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', val.strip())
+    if not m:
+        return False
+    parts = [int(m.group(i)) for i in range(1, 5)]
+    if not all(0 <= p <= 255 for p in parts):
+        return False
+    if val.startswith('192.168.') or val.startswith('10.') or val.startswith('172.16.'):
+        return False
+    if val in ('0.0.0.0', '127.0.0.1', '255.255.255.255'):
+        return False
+    return True
+
+
 class SSHS8:
     def __init__(self, context, sender=None, user_tag="@user"):
         self.context = context
@@ -125,7 +167,6 @@ class SSHS8:
                 'input[value="Create an account"]',
                 'a:has-text("Create an account")',
                 'button:has-text("Create account")',
-                'button:has-text("Create")',
                 'input[type="submit"]',
             ]:
                 try:
@@ -142,151 +183,127 @@ class SSHS8:
 
             log.info(f"🎯 Create clicked: {clicked}")
 
-            # ✅ نستناو ظهور "Account successfully created"
-            log.info("⏳ نستناو الحساب...")
+            # ═══════════════════════════════════════
+            # ✅ نستناو حتى الجدول يتحمّل مزيان
+            # ═══════════════════════════════════════
+            log.info("⏳ نستناو الحساب يتحمّل...")
 
-            # نستناو أن يظهر IPv4 فالـ body
-            for attempt in range(25):
+            host = None
+            username = None
+            password = None
+
+            for attempt in range(30):  # 30 × 2s = 60s
                 await page.wait_for_timeout(2000)
 
-                # نتأكدو واش "Account successfully created" ظهر
-                created = await page.evaluate("""
+                # ✅ نستخرجو من inputs (الطريقة الأكثر دقة)
+                info = await page.evaluate("""
                     () => {
+                        const out = { host: null, user: null, pass: null, domain: null };
+
+                        // ✅ ندورو على كل input (بما فيها readonly)
+                        const inputs = document.querySelectorAll('input');
+                        
+                        for (const inp of inputs) {
+                            const val = (inp.value || '').trim();
+                            if (!val || val.length < 2) continue;
+                            if (val.toLowerCase() === 'copy') continue;
+
+                            // نجيبو الـ label (text قبل input فـ نفس الـ row/div)
+                            let label = '';
+                            
+                            // 1. نجربو الـ <tr><td>label</td><td><input></td></tr>
+                            const tr = inp.closest('tr');
+                            if (tr) {
+                                const tds = tr.querySelectorAll('td, th');
+                                if (tds.length >= 1) {
+                                    label = (tds[0].innerText || '').trim().toLowerCase();
+                                }
+                            }
+                            
+                            // 2. نجربو الـ parent div
+                            if (!label) {
+                                let p = inp.parentElement;
+                                for (let i = 0; i < 4 && p; i++) {
+                                    const t = (p.innerText || '').trim().toLowerCase();
+                                    if (t.length > 0 && t.length < 100) {
+                                        label = t;
+                                        break;
+                                    }
+                                    p = p.parentElement;
+                                }
+                            }
+
+                            // ✅ نصنّفو حسب label
+                            if (/ipv4|^ip\\b|^ip$|\\bhost\\b/i.test(label)) {
+                                if (!out.host) out.host = val;
+                            } else if (/username|user\\s*name|\\buser\\b/i.test(label)) {
+                                if (!out.user) out.user = val;
+                            } else if (/password|\\bpass\\b/i.test(label)) {
+                                if (!out.pass) out.pass = val;
+                            } else if (/domain/i.test(label)) {
+                                if (!out.domain) out.domain = val;
+                            }
+                        }
+
+                        // ✅ إذا مالقيناش كامل، ندورو على الـ regex
                         const body = document.body.innerText || '';
-                        return body.includes('successfully created') ||
-                               body.includes('Account successfully') ||
-                               /\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/.test(body);
+                        if (!out.host) {
+                            const ips = body.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
+                            for (const ip of ips) {
+                                const parts = ip.split('.').map(Number);
+                                if (parts.every(p => p >= 0 && p <= 255) &&
+                                    !ip.startsWith('192.168.') &&
+                                    !ip.startsWith('10.') &&
+                                    !ip.startsWith('172.16.') &&
+                                    ip !== '0.0.0.0' && ip !== '127.0.0.1' &&
+                                    ip !== '255.255.255.255') {
+                                    out.host = ip;
+                                    break;
+                                }
+                            }
+                        }
+
+                        return out;
                     }
                 """)
-                if created:
-                    log.info(f"✅ Account created بعد {(attempt+1)*2}s")
+
+                # ✅ نتحققو من الصلاحية فـ Python
+                if info.get("host") and is_valid_ip(info["host"]) and not host:
+                    host = info["host"]
+                    log.info(f"✅ Host لقيناه: {host}")
+
+                if info.get("user") and is_valid_value(info["user"], 4) and not username:
+                    username = info["user"]
+                    log.info(f"✅ User لقيناه: {username}")
+
+                if info.get("pass") and is_valid_value(info["pass"], 6) and not password:
+                    password = info["pass"]
+                    log.info(f"✅ Pass لقيناه: {password}")
+
+                # ✅ إلا لقينا 3 → نوقفو
+                if host and username and password:
+                    log.info(f"✅ معلومات كاملة بعد {(attempt+1)*2}s")
                     break
 
-            await page.wait_for_timeout(2000)
-
-            # ✅ نستخرجو المعلومات من الجدول
-            info = await page.evaluate("""
-                () => {
-                    const out = { host: null, user: null, pass: null, domain: null, all_text: '' };
-                    out.all_text = document.body.innerText || '';
-
-                    // ✅ الطريقة 1: ندورو على الـ inputs + الـ label القريب
-                    const inputs = document.querySelectorAll('input');
-                    for (const inp of inputs) {
-                        const val = (inp.value || '').trim();
-                        if (!val || val.length < 2) continue;
-
-                        // نجيبو النص القريب (label / td قبل)
-                        let label = '';
-                        // parent div
-                        let p = inp.parentElement;
-                        for (let i = 0; i < 5 && p; i++) {
-                            const txt = (p.innerText || '').toLowerCase();
-                            if (txt.length < 200) {
-                                label = txt;
-                                break;
-                            }
-                            p = p.parentElement;
-                        }
-
-                        // إذا label فيه ipv4 → هذا host
-                        if (!out.host && /ipv4|^ip\\b|host/i.test(label)) {
-                            const m = val.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
-                            if (m) out.host = m[0];
-                            else if (val.includes('.')) out.host = val;
-                        }
-                        // username
-                        if (!out.user && /username|user\\s*name/i.test(label)) {
-                            out.user = val;
-                        }
-                        // password
-                        if (!out.pass && /password|pass/i.test(label)) {
-                            out.pass = val;
-                        }
-                        // domain
-                        if (!out.domain && /domain/i.test(label)) {
-                            out.domain = val;
-                        }
-                    }
-
-                    // ✅ الطريقة 2: من الجدول — <tr> فيه <td>IPv4</td><td>value</td>
-                    if (!out.host || !out.user || !out.pass) {
-                        const rows = document.querySelectorAll('tr');
-                        for (const row of rows) {
-                            const cells = row.querySelectorAll('td');
-                            if (cells.length < 2) continue;
-                            const label = (cells[0].innerText || '').trim().toLowerCase();
-                            // نجيبو القيمة من cell الثاني أو من input داخلها
-                            let val = (cells[1].innerText || '').trim();
-                            const inpInCell = cells[1].querySelector('input');
-                            if (inpInCell && inpInCell.value) {
-                                val = inpInCell.value.trim();
-                            }
-
-                            if (!val) continue;
-
-                            if (!out.host && /ipv4|^ip$|host/i.test(label)) {
-                                const m = val.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
-                                if (m) out.host = m[0];
-                            }
-                            if (!out.user && /username|user\\s*name/i.test(label)) {
-                                out.user = val;
-                            }
-                            if (!out.pass && /password|pass/i.test(label)) {
-                                out.pass = val;
-                            }
-                            if (!out.domain && /domain/i.test(label)) {
-                                out.domain = val;
-                            }
-                        }
-                    }
-
-                    // ✅ الطريقة 3: regex على النص الكامل
-                    if (!out.host) {
-                        const ipv4All = out.all_text.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g) || [];
-                        for (const ip of ipv4All) {
-                            const parts = ip.split('.').map(Number);
-                            if (parts.every(p => p >= 0 && p <= 255) &&
-                                !ip.startsWith('192.168.') &&
-                                !ip.startsWith('10.') &&
-                                !ip.startsWith('172.16.') &&
-                                ip !== '0.0.0.0' && ip !== '127.0.0.1') {
-                                out.host = ip;
-                                break;
-                            }
-                        }
-                    }
-
-                    // username من النص: كيكون بعد "Username"
-                    if (!out.user) {
-                        const m = out.all_text.match(/(?:username|user\\s*name)[\\s:]*([a-zA-Z0-9_\\-]{4,20})/i);
-                        if (m) out.user = m[1];
-                    }
-                    // password من النص
-                    if (!out.pass) {
-                        const m = out.all_text.match(/(?:password|pass)[\\s:]*([A-Za-z0-9]{6,16})/i);
-                        if (m) out.pass = m[1];
-                    }
-
-                    return out;
-                }
-            """)
-
-            log.info(f"🔍 معلومات: host={info.get('host')} user={info.get('user')} pass={info.get('pass')}")
+            log.info(f"🔍 معلومات نهائية: host={host} user={username} pass={password}")
 
             await self._send_photo(page, "3️⃣ بعد Create")
 
-            log.info(f"🖥️ Host: {info.get('host')}")
-            log.info(f"👤 User: {info.get('user')}")
-            log.info(f"🔑 Pass: {info.get('pass')}")
+            result["host"] = host
+            result["username"] = username
+            result["password"] = password or password_input_value
 
-            result["host"] = info.get("host")
-            result["username"] = info.get("user") or "unknown"
-            result["password"] = info.get("pass") or password_input_value
-
-            if not result["host"]:
+            if not host:
                 result["success"] = False
                 result["message"] = "ما لقيناش host — شوف آخر screenshot."
+                return result
+            if not username:
+                result["success"] = False
+                result["message"] = "ما لقيناش username — شوف آخر screenshot."
+                return result
+            if not password:
+                result["success"] = False
+                result["message"] = "ما لقيناش password — شوف آخر screenshot."
                 return result
 
             result["success"] = True
