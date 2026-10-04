@@ -792,4 +792,132 @@ async def admin_start_all(query):
         await query.message.edit_text(
             "▶️ *تم تشغيل البوت للجميع*\n\n"
             "✅ المستخدمين المسموحين رايح يقدرون يستعملو.",
-            parse_mode=ParseMode.MARK
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=admin_menu(),
+        )
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════════
+# handle_admin_input
+# ═══════════════════════════════════════════
+
+async def handle_admin_input(update, context, text):
+    mode = context.user_data.get("await")
+    if not mode:
+        return False
+
+    user = update.effective_user
+    if not is_admin(user.id):
+        context.user_data.pop("await", None)
+        return False
+
+    context.user_data.pop("await", None)
+
+    try:
+        if mode == "grant":
+            uid = int(text)
+            await db.set_access(uid, 1)
+            await update.message.reply_text(f"✅ تم تفعيل `{uid}`", parse_mode=ParseMode.MARKDOWN)
+
+        elif mode == "ban":
+            uid = int(text)
+            await db.set_ban(uid, 1)
+            await update.message.reply_text(f"🚫 تم حظر `{uid}`", parse_mode=ParseMode.MARKDOWN)
+
+        elif mode == "priority":
+            uid = int(text)
+            await db.set_priority(uid, 100)
+            await update.message.reply_text(f"⚡ تم زيادة سرعة `{uid}`", parse_mode=ParseMode.MARKDOWN)
+
+        elif mode == "pause":
+            uid = int(text)
+            u = await db.get_user(uid)
+            if u:
+                new_val = 0 if u.get("access") else 1
+                await db.set_access(uid, new_val)
+                state = "تشغيل" if new_val else "توقيف"
+                await update.message.reply_text(f"⏸️ تم {state} `{uid}`", parse_mode=ParseMode.MARKDOWN)
+
+        elif mode == "broadcast":
+            users = await db.get_all_users()
+            sent = 0
+            for u in users:
+                try:
+                    await context.bot.send_message(chat_id=u["user_id"], text=text)
+                    sent += 1
+                except Exception:
+                    pass
+            await update.message.reply_text(f"📢 تم الإرسال لـ {sent} مستخدم")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل: {e}")
+
+    return True
+
+
+# ═══════════════════════════════════════════
+# button_handler
+# ═══════════════════════════════════════════
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    data = query.data
+
+    if data == "status":
+        await status_cmd(update, context)
+        return
+
+    if data == "ssh_ws":
+        await handle_ssh(update, context)
+        return
+
+    if data.startswith("ssh_country:"):
+        await ssh_country_handler(update, context)
+        return
+
+    if data == "back_main":
+        if is_admin(user.id):
+            try:
+                await query.message.edit_text(
+                    messages.WELCOME_ADMIN,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=main_menu(True),
+                    disable_web_page_preview=True,
+                )
+            except Exception:
+                pass
+        return
+
+    if data.startswith("admin") and not is_admin(user.id):
+        await query.message.reply_text("🚫 نتا ماشي ADMIN")
+        return
+
+    if data == "admin":
+        await admin_panel(query, context)
+    elif data == "admin_stats":
+        await admin_stats(query)
+    elif data == "admin_users":
+        await admin_users(query)
+    elif data == "admin_banned":
+        await admin_banned(query)
+    elif data == "admin_requests":
+        await admin_requests(query)
+    elif data == "admin_priority":
+        await admin_priority(query, context)
+    elif data == "admin_ban":
+        await admin_ban(query, context)
+    elif data == "admin_grant":
+        await admin_grant(query, context)
+    elif data == "admin_pause":
+        await admin_pause(query, context)
+    elif data == "admin_broadcast":
+        await admin_broadcast(query, context)
+    elif data == "admin_stop_all":
+        await admin_stop_all(query)
+    elif data == "admin_start_all":
+        await admin_start_all(query)
