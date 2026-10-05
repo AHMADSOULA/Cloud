@@ -87,93 +87,24 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCIsIndzSGVhZGVySG9zdCI6ImFobWVkLXZpcDEtNDE0MDA4NjEyMTIzLmV1cm9wZS13ZXN0MS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJlbmFibGVkIjp0cnVlLCJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0=",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel — Locked + تشفير
+# SSH DarkTunnel (مشفر)
 # ═══════════════════════════════════════════
 
+SSH_TEMPLATE_PLAIN = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
+
+
 def _b64_pad(s: str) -> str:
-    """نضيفو = إذا ناقص"""
+    s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
-def encrypt_ssh_dark(config: dict) -> str:
-    """✅ يشفّر config → darktunnel:// (نفس طريقة GC.py)"""
-    raw = json.dumps(config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    b64 = base64.b64encode(raw).decode("utf-8")
-    return "darktunnel://" + b64
-
-
-def build_ssh_dark_encrypted(host: str, username: str, password: str) -> str:
-    """
-    ✅ يبني ملف SSH_4DAY🇫🇷.dark مقفول (Locked)
-    - بنية encryptedLockedConfig
-    - بلا rstrip("=")
-    """
-    try:
-        config = {
-            "type": "SSH",
-            "name": "SSH_4DAY🇫🇷",
-            "sshTunnelConfig": {
-                "injectConfig": {
-                    "enabled": True,
-                    "mode": "PROXY"
-                }
-            },
-            "encryptedLockedConfig": {
-                "LockedAppConfig": {
-                    "VersionCode": 32,
-                    "VersionName": "1.0.26",
-                    "Message": "APP_/DARK TUNEEL📱\n\nتفاعل مطلوب _50💖\n\nINTERNET SPEED🌐\n\nيدعم العاب ايضا🕹🧩\n+سناب 🌏ومجاني 🥳 في تعليقات",
-                    "ConnectedMessage": "بصحتك🤍_يدعم العاب 🇧🇪_ارجع تفاعل🥳❤️",
-                    "ExpiredAtTimestamp": 0,
-                    "HardwareIdList": [],
-                    "TunnelType": "SSH",
-                    "IsSshLocked": True
-                },
-                "EncryptedLockedConfig": {
-                    "InjectConfig": {
-                        "IsEncrypted": True,
-                        "EncryptedMode": "PROXY",
-                        "EncryptedProxyHost": "34.43.46.91",
-                        "EncryptedProxyPort": "443",
-                        "EncryptedServerNameIndication": [],
-                        "EncryptedPayload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
-                        "EncryptedDnsttDnsHost": "1.1.1.1",
-                        "EncryptedDnsttDnsPort": "53",
-                        "EncryptedDnsttServerName": [],
-                        "EncryptedDnsttPubkey": []
-                    },
-                    "SshConfig": {
-                        "IsEncrypted": True,
-                        "IsLocked": True,
-                        "EncryptedHost": host.strip(),
-                        "EncryptedPort": "22",
-                        "EncryptedUsername": username.strip(),
-                        "EncryptedPassword": password.strip()
-                    },
-                    "V2RayConfig": {
-                        "IsEncrypted": True,
-                        "IsInjectModeEnabled": False,
-                        "EncryptedConfig": []
-                    }
-                }
-            }
-        }
-
-        return encrypt_ssh_dark(config)
-
-    except Exception as e:
-        log.error(f"❌ build_ssh_dark_encrypted: {e}", exc_info=True)
-        return None
-
-
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
-    """يعدل wsHeaderHost فـ ملفات VLESS (Cloud Run)"""
     try:
         raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
         raw_b64 = _b64_pad(raw_b64)
@@ -197,6 +128,41 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         return "darktunnel://" + new_b64
     except Exception as e:
         log.error(f"❌ build_darktunnel: {e}", exc_info=True)
+        return None
+
+
+def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
+    """
+    يبني ملف SSH dark — بلا تشفير (باش نشوفو المشكل)
+    """
+    try:
+        # ✅ بلا تشفير — config واضح
+        outer = {
+            "type": "SSH",
+            "name": "SSH",
+            "sshTunnelConfig": {
+                "sshConfig": {
+                    "host": host or "",
+                    "port": 22,
+                    "username": username,
+                    "password": password
+                },
+                "injectConfig": {
+                    "mode": "PROXY",
+                    "proxyHost": "34.43.46.91",
+                    "proxyPort": 443,
+                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
+                }
+            }
+        }
+
+        outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
+        outer_b64 = base64.b64encode(outer_json.encode("utf-8")).decode("utf-8")
+
+        return "darktunnel://" + outer_b64
+
+    except Exception as e:
+        log.error(f"❌ build_ssh_dark: {e}", exc_info=True)
         return None
 
 
@@ -565,7 +531,7 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket — France مباشرة
+# SSH WebSocket
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -574,44 +540,31 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
 
-    if query:
-        chat_id = query.message.chat_id
-    else:
-        chat_id = update.message.chat_id
-
     if await db.is_globally_stopped() and not is_admin(user.id):
         try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="⛔ *البوت متوقف حالياً*",
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            await query.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
         except Exception:
             pass
         return
 
     if not await db.has_access(user.id):
         try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="🔒 ما عندكش صلاحية.",
-                parse_mode=ParseMode.MARKDOWN,
-            )
+            await query.message.reply_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
         except Exception:
             pass
         return
 
+    # ✅ الرسالة: "انتظر" فقط
     try:
         msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text="⏳ جاري إنشاء حساب SSH France...",
+            chat_id=query.message.chat_id,
+            text="⏳ انتظر...",
         )
-    except Exception as e:
-        log.error(f"❌ send msg: {e}")
+    except Exception:
         return
 
     try:
-        from automation.sshs8 import SSHS8
+        from automation.sshs8 import SSHS8, KNOWN_COUNTRIES
     except Exception as e:
         log.error(f"❌ import sshs8: {e}")
         try:
@@ -624,95 +577,29 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ctx = await browser.start()
         ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
-        ssh.set_chat(chat_id)
-        ssh.bot = context.bot
 
-        ok = await ssh.open_france_page()
-        if not ok:
-            await msg.edit_text("❌ ما قدرناش نفتحو الصفحة.")
-            try:
-                await browser.close()
-            except Exception:
-                pass
-            return
+        countries = await ssh.open_ssh_websocket()
+        log.info(f"🌍 Countries: {len(countries)}")
 
-        result = await ssh.create_account()
+        if not countries:
+            countries = KNOWN_COUNTRIES
 
-        if not result.get("success"):
-            error_msg = result.get("message", "سبب غير معروف")
-            await msg.edit_text(f"❌ فشل.\n\n{error_msg}")
-            try:
-                await ssh.close()
-                await browser.close()
-            except Exception:
-                pass
-            return
+        context.user_data["ssh_countries"] = countries
+        context.user_data["ssh_obj"] = ssh
+        context.user_data["ssh_browser"] = browser
 
-        host = result.get("host")
-        username = result.get("username")
-        password = result.get("password")
+        rows = []
+        for i, c in enumerate(countries):
+            rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
+        rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
+        kb = InlineKeyboardMarkup(rows)
 
-        if not host or not username or not password:
+        try:
             await msg.edit_text(
-                "❌ بيانات غير مكتملة.\n"
-                f"Host: {host}\nUser: {username}\nPass: {password}"
+                "🌍 *اختر الدولة:*",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=kb,
             )
-            try:
-                await ssh.close()
-                await browser.close()
-            except Exception:
-                pass
-            return
-
-        # ✅ معلومات الحساب
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                f"✅ *SSH Account*\n\n"
-                f"🌍 الدولة: France 🇫🇷\n"
-                f"🖥️ Host: `{host}`\n"
-                f"🔌 Port: `22`\n"
-                f"👤 User: `{username}`\n"
-                f"🔑 Pass: `{password}`"
-            ),
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-        # ✅ بناء ملف dark المشفر + Locked
-        new_uri = build_ssh_dark_encrypted(host, username, password)
-        if not new_uri:
-            await msg.edit_text("❌ فشل بناء ملف dark.")
-            try:
-                await ssh.close()
-                await browser.close()
-            except Exception:
-                pass
-            return
-
-        # ✅ اسم الملف: SSH_4DAY🇫🇷.dark
-        filename = "SSH_4DAY🇫🇷.dark"
-        bio = io.BytesIO(new_uri.encode("utf-8"))
-        bio.name = filename
-        bio.seek(0)
-
-        await context.bot.send_document(
-            chat_id=chat_id,
-            document=bio,
-            filename=filename,
-            caption=f"📁 {filename}",
-        )
-
-        try:
-            await msg.delete()
-        except Exception:
-            pass
-
-        try:
-            await ssh.close()
-        except Exception:
-            pass
-        try:
-            await browser.close()
         except Exception:
             pass
 
@@ -726,6 +613,81 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await browser.close()
         except Exception:
             pass
+
+
+async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    idx = int(query.data.split(":")[1])
+
+    countries = context.user_data.get("ssh_countries", [])
+    ssh = context.user_data.get("ssh_obj")
+    browser = context.user_data.get("ssh_browser")
+
+    if not ssh or idx >= len(countries):
+        await query.message.reply_text("❌ انتهت الجلسة.")
+        return
+
+    country = countries[idx]
+    await query.message.edit_text(f"⏳ جاري إنشاء حساب {country}...")
+
+    try:
+        result = await ssh.create_account(country)
+
+        if not result.get("success"):
+            await query.message.edit_text("❌ فشل إنشاء الحساب.")
+            return
+
+        host = result.get("host")
+        username = result.get("username")
+        password = result.get("password")
+
+        # ✅ ملف مشفر
+        new_uri = build_ssh_dark_with_creds(host, username, password)
+
+        if not new_uri:
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
+            return
+
+        bio = io.BytesIO(new_uri.encode("utf-8"))
+        bio.name = f"SSH - {country}.dark"
+        bio.seek(0)
+
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=bio,
+            filename=bio.name,
+            caption=(
+                f"✅ *SSH Account*\n\n"
+                f"🌍 {country}\n"
+                f"🖥️ Host: `{host or '-'}`\n"
+                f"🔌 Port: `22`\n"
+                f"👤 User: `{username}`\n"
+                f"🔑 Pass: `{password}`"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        context.user_data.pop("ssh_countries", None)
+        context.user_data.pop("ssh_obj", None)
+        context.user_data.pop("ssh_browser", None)
+
+        try:
+            await ssh.close()
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+        await query.message.delete()
+
+    except Exception as e:
+        log.exception("فشل SSH country")
+        await query.message.reply_text(f"❌ فشل: {str(e)[:300]}")
 
 
 # ═══════════════════════════════════════════
@@ -964,6 +926,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(f"❌ {str(e)[:200]}")
             except Exception:
                 pass
+        return
+
+    if data.startswith("ssh_country:"):
+        try:
+            await ssh_country_handler(update, context)
+        except Exception as e:
+            log.exception("فشل SSH country")
         return
 
     if data == "status":
