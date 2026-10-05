@@ -1,6 +1,5 @@
 import asyncio
 import io
-import os
 import base64
 import json
 import datetime
@@ -93,7 +92,7 @@ DARK_FILES = [
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel (مشفر)
+# SSH DarkTunnel (النسخة الناجحة)
 # ═══════════════════════════════════════════
 
 SSH_TEMPLATE_PLAIN = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
@@ -133,10 +132,9 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
-    يبني ملف SSH dark — بلا تشفير (باش نشوفو المشكل)
+    يبني ملف SSH dark — النسخة الناجحة
     """
     try:
-        # ✅ بلا تشفير — config واضح
         outer = {
             "type": "SSH",
             "name": "SSH",
@@ -554,7 +552,6 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    # ✅ الرسالة: "انتظر" فقط
     try:
         msg = await context.bot.send_message(
             chat_id=query.message.chat_id,
