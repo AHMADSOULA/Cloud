@@ -3,7 +3,6 @@ import io
 import os
 import base64
 import json
-import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -93,11 +92,8 @@ DARK_FILES = [
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel (النسخة الناجحة)
+# SSH DarkTunnel — بلا تشفير (النسخة البسيطة)
 # ═══════════════════════════════════════════
-
-SSH_TEMPLATE_PLAIN = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
-
 
 def _b64_pad(s: str) -> str:
     s = s.strip()
@@ -133,9 +129,10 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
-    ✅ يبني ملف SSH dark — النسخة الناجحة
+    ✅ يبني ملف SSH dark — بلا تشفير
     - بنية sshConfig مباشرة
     - base64 بلا rstrip
+    - المعلومات مكشوفة
     """
     try:
         outer = {
@@ -532,7 +529,7 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket
+# SSH WebSocket — France مباشرة
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -558,13 +555,13 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         msg = await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text="⏳ انتظر...",
+            text="⏳ جاري إنشاء حساب SSH France...",
         )
     except Exception:
         return
 
     try:
-        from automation.sshs8 import SSHS8, KNOWN_COUNTRIES
+        from automation.sshs8 import SSHS8
     except Exception as e:
         log.error(f"❌ import sshs8: {e}")
         try:
@@ -578,28 +575,92 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ctx = await browser.start()
         ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
 
-        countries = await ssh.open_ssh_websocket()
-        log.info(f"🌍 Countries: {len(countries)}")
+        ok = await ssh.open_france_page()
+        if not ok:
+            await msg.edit_text("❌ ما قدرناش نفتحو الصفحة.")
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            return
 
-        if not countries:
-            countries = KNOWN_COUNTRIES
+        result = await ssh.create_account()
 
-        context.user_data["ssh_countries"] = countries
-        context.user_data["ssh_obj"] = ssh
-        context.user_data["ssh_browser"] = browser
+        if not result.get("success"):
+            error_msg = result.get("message", "سبب غير معروف")
+            await msg.edit_text(f"❌ فشل.\n\n{error_msg}")
+            try:
+                await ssh.close()
+                await browser.close()
+            except Exception:
+                pass
+            return
 
-        rows = []
-        for i, c in enumerate(countries):
-            rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
-        rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
-        kb = InlineKeyboardMarkup(rows)
+        host = result.get("host")
+        username = result.get("username")
+        password = result.get("password")
+
+        if not host or not username or not password:
+            await msg.edit_text(
+                "❌ بيانات غير مكتملة.\n"
+                f"Host: {host}\nUser: {username}\nPass: {password}"
+            )
+            try:
+                await ssh.close()
+                await browser.close()
+            except Exception:
+                pass
+            return
+
+        # ✅ معلومات الحساب
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=(
+                f"✅ *SSH Account*\n\n"
+                f"🌍 الدولة: France 🇫🇷\n"
+                f"🖥️ Host: `{host}`\n"
+                f"🔌 Port: `22`\n"
+                f"👤 User: `{username}`\n"
+                f"🔑 Pass: `{password}`"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        # ✅ بناء ملف dark — بلا تشفير
+        new_uri = build_ssh_dark_with_creds(host, username, password)
+        if not new_uri:
+            await msg.edit_text("❌ فشل بناء ملف dark.")
+            try:
+                await ssh.close()
+                await browser.close()
+            except Exception:
+                pass
+            return
+
+        # ✅ اسم الملف: SSH_4DAY🇫🇷.dark
+        filename = "SSH_4DAY🇫🇷.dark"
+        bio = io.BytesIO(new_uri.encode("utf-8"))
+        bio.name = filename
+        bio.seek(0)
+
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=bio,
+            filename=filename,
+            caption=f"📁 {filename}",
+        )
 
         try:
-            await msg.edit_text(
-                "🌍 *اختر الدولة:*",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=kb,
-            )
+            await msg.delete()
+        except Exception:
+            pass
+
+        try:
+            await ssh.close()
+        except Exception:
+            pass
+        try:
+            await browser.close()
         except Exception:
             pass
 
@@ -613,125 +674,6 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await browser.close()
         except Exception:
             pass
-
-
-async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = update.effective_user
-    idx = int(query.data.split(":")[1])
-
-    countries = context.user_data.get("ssh_countries", [])
-    ssh = context.user_data.get("ssh_obj")
-    browser = context.user_data.get("ssh_browser")
-
-    if not ssh or idx >= len(countries):
-        await query.message.reply_text("❌ انتهت الجلسة.")
-        return
-
-    country = countries[idx]
-    await query.message.edit_text(f"⏳ جاري إنشاء حساب {country}...")
-
-    try:
-        result = await ssh.create_account(country)
-
-        if not result.get("success"):
-            await query.message.edit_text("❌ فشل إنشاء الحساب.")
-            return
-
-        host = result.get("host")
-        username = result.get("username")
-        password = result.get("password")
-
-        # ✅ ملف مشفر
-        new_uri = build_ssh_dark_with_creds(host, username, password)
-
-        if not new_uri:
-            await query.message.edit_text("❌ فشل بناء ملف dark.")
-            return
-
-        bio = io.BytesIO(new_uri.encode("utf-8"))
-        bio.name = f"SSH - {country}.dark"
-        bio.seek(0)
-
-        await context.bot.send_document(
-            chat_id=query.message.chat_id,
-            document=bio,
-            filename=bio.name,
-            caption=(
-                f"✅ *SSH Account*\n\n"
-                f"🌍 {country}\n"
-                f"🖥️ Host: `{host or '-'}`\n"
-                f"🔌 Port: `22`\n"
-                f"👤 User: `{username}`\n"
-                f"🔑 Pass: `{password}`"
-            ),
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-        context.user_data.pop("ssh_countries", None)
-        context.user_data.pop("ssh_obj", None)
-        context.user_data.pop("ssh_browser", None)
-
-        try:
-            await ssh.close()
-        except Exception:
-            pass
-        try:
-            await browser.close()
-        except Exception:
-            pass
-
-        await query.message.delete()
-
-    except Exception as e:
-        log.exception("فشل SSH country")
-        await query.message.reply_text(f"❌ فشل: {str(e)[:300]}")
-
-
-# ═══════════════════════════════════════════
-# اختبار طرق التشفير (ADMIN فقط)
-# ═══════════════════════════════════════════
-
-async def test_methods_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر /test_methods"""
-    user = update.effective_user
-
-    if not is_admin(user.id):
-        await update.message.reply_text("🚫 نتاج ماشي ADMIN")
-        return
-
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text(
-            "❌ *استعمال:*\n"
-            "`/test_methods HOST USER PASS`\n\n"
-            "مثال:\n"
-            "`/test_methods 152.228.162.19 u8313114335 VR0ookwevB`",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-        return
-
-    host, username, password = args[0], args[1], args[2]
-
-    await update.message.reply_text(
-        f"🧪 *بدء اختبار 10 طرق*\n\n"
-        f"🖥️ Host: `{host}`\n"
-        f"👤 User: `{username}`\n"
-        f"🔑 Pass: `{password}`\n\n"
-        f"⏳ غادي نرسلو كل طريقة كملف...",
-        parse_mode=ParseMode.MARKDOWN,
-    )
-
-    from utils.dark_encrypt_test import test_all_methods_and_notify
-    await test_all_methods_and_notify(
-        bot=context.bot,
-        chat_id=update.effective_chat.id,
-        host=host,
-        username=username,
-        password=password,
-    )
 
 
 # ═══════════════════════════════════════════
@@ -970,13 +912,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(f"❌ {str(e)[:200]}")
             except Exception:
                 pass
-        return
-
-    if data.startswith("ssh_country:"):
-        try:
-            await ssh_country_handler(update, context)
-        except Exception as e:
-            log.exception("فشل SSH country")
         return
 
     if data == "status":
