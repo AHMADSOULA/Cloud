@@ -92,7 +92,7 @@ DARK_FILES = [
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel — بلا تشفير (النسخة البسيطة)
+# SSH DarkTunnel — بلا تشفير
 # ═══════════════════════════════════════════
 
 def _b64_pad(s: str) -> str:
@@ -130,9 +130,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
     ✅ يبني ملف SSH dark — بلا تشفير
-    - بنية sshConfig مباشرة
-    - base64 بلا rstrip
-    - المعلومات مكشوفة
     """
     try:
         outer = {
@@ -538,23 +535,28 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
 
+    if query:
+        chat_id = query.message.chat_id
+    else:
+        chat_id = update.message.chat_id
+
     if await db.is_globally_stopped() and not is_admin(user.id):
         try:
-            await query.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+            await context.bot.send_message(chat_id=chat_id, text="⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
         except Exception:
             pass
         return
 
     if not await db.has_access(user.id):
         try:
-            await query.message.reply_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+            await context.bot.send_message(chat_id=chat_id, text="🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
         except Exception:
             pass
         return
 
     try:
         msg = await context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             text="⏳ جاري إنشاء حساب SSH France...",
         )
     except Exception:
@@ -614,7 +616,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # ✅ معلومات الحساب
         await context.bot.send_message(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             text=(
                 f"✅ *SSH Account*\n\n"
                 f"🌍 الدولة: France 🇫🇷\n"
@@ -626,7 +628,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ بناء ملف dark — بلا تشفير
+        # ✅ بناء ملف dark
         new_uri = build_ssh_dark_with_creds(host, username, password)
         if not new_uri:
             await msg.edit_text("❌ فشل بناء ملف dark.")
@@ -644,7 +646,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bio.seek(0)
 
         await context.bot.send_document(
-            chat_id=query.message.chat_id,
+            chat_id=chat_id,
             document=bio,
             filename=filename,
             caption=f"📁 {filename}",
