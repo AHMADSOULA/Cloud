@@ -1,8 +1,6 @@
 """
 automation/sshs8.py
-- vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113
-- يفتح الصفحة، يعبي Password، يضغط Create
-- يستخرج Host/User/Pass
+- يدعم URLs متعددة (دول مختلفة)
 - سريع بلا صور
 """
 import asyncio
@@ -15,7 +13,49 @@ from utils.logger import get_logger
 log = get_logger("SSHS8")
 
 
-FRANCE_CREATE_URL = "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113"
+# ═══════════════════════════════════════════
+# قائمة الدول مع URLs
+# ═══════════════════════════════════════════
+
+COUNTRIES = [
+    {
+        "name": "Italy",
+        "flag": "🇮🇹",
+        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/212",
+    },
+    {
+        "name": "Germany",
+        "flag": "🇩🇪",
+        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/105",
+    },
+    {
+        "name": "Netherlands",
+        "flag": "🇳🇱",
+        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/236",
+    },
+    {
+        "name": "Japan",
+        "flag": "🇯🇵",
+        "url": "https://vpnasia.sshs8.com/accounts/SSH_WEBSOCKET/1",
+    },
+    {
+        "name": "USA",
+        "flag": "🇺🇸",
+        "url": "https://vpnnamerica.sshs8.com/accounts/SSH_WEBSOCKET/58",
+    },
+    {
+        "name": "Brazil",
+        "flag": "🇧🇷",
+        "url": "https://vpnsamerica.sshs8.com/accounts/SSH_WEBSOCKET/1",
+    },
+]
+
+
+def get_country_by_index(idx: int) -> dict:
+    """يرجع الدولة حسب الـ index"""
+    if 0 <= idx < len(COUNTRIES):
+        return COUNTRIES[idx]
+    return COUNTRIES[0]
 
 
 def generate_password():
@@ -36,27 +76,32 @@ class SSHS8:
         self.chat_id = chat_id
 
     # ═══════════════════════════════════════
-    # 1. فتح الصفحة
+    # 1. فتح صفحة (URL مخصص)
     # ═══════════════════════════════════════
 
-    async def open_france_page(self) -> bool:
-        log.info(f"🌐 فتح: {FRANCE_CREATE_URL}")
+    async def open_page(self, url: str) -> bool:
+        """يفتح صفحة مخصصة"""
+        log.info(f"🌐 فتح: {url}")
         self.page = await self.context.new_page()
         page = self.page
 
         try:
-            await page.goto(FRANCE_CREATE_URL, wait_until="domcontentloaded", timeout=60000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(3000)
             return True
         except Exception as e:
-            log.error(f"❌ open_france_page: {e}", exc_info=True)
+            log.error(f"❌ open_page: {e}", exc_info=True)
             return False
+
+    async def open_france_page(self) -> bool:
+        """متوافق مع القديم — فرنسا"""
+        return await self.open_page("https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113")
 
     # ═══════════════════════════════════════
     # 2. تعبئة Password + Create
     # ═══════════════════════════════════════
 
-    async def create_account(self) -> dict:
+    async def create_account(self, country_url: str = None) -> dict:
         page = self.page
         if not page:
             return {"success": False, "error": "no_page"}
@@ -67,7 +112,6 @@ class SSHS8:
             "success": False,
             "username": None,
             "password": password_input_value,
-            "country": "France",
             "host": None,
             "domain": None,
             "message": None,
@@ -184,7 +228,7 @@ class SSHS8:
         return result
 
     # ═══════════════════════════════════════
-    # 3. استخراج المعلومات — بالترتيب
+    # 3. استخراج المعلومات
     # ═══════════════════════════════════════
 
     async def _extract_by_order(self, page) -> dict:
