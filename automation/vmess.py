@@ -1,8 +1,8 @@
 """
 automation/vmess.py
-- ينشئ حساب VMESS
+- ينشئ حساب VMESS لكل دولة
 - يستخرج link TLS
-- يبني ملف dark
+- يبني ملف dark مع الإيموجي حسب الدولة
 """
 import asyncio
 import random
@@ -16,7 +16,42 @@ from utils.logger import get_logger
 log = get_logger("VMESS")
 
 
-VMESS_CREATE_URL = "https://vpnnamerica.sshs8.com/accounts/VMESS/3"
+# ═══════════════════════════════════════════
+# قائمة الدول مع URLs + إيموجي
+# ═══════════════════════════════════════════
+
+COUNTRIES = [
+    {
+        "name": "France",
+        "flag": "🇫🇷",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/115",
+    },
+    {
+        "name": "USA",
+        "flag": "🇺🇸",
+        "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/52",
+    },
+    {
+        "name": "Mexico",
+        "flag": "🇲🇽",
+        "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/3",
+    },
+    {
+        "name": "Netherlands",
+        "flag": "🇳🇱",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/247",
+    },
+    {
+        "name": "Germany",
+        "flag": "🇩🇪",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/107",
+    },
+    {
+        "name": "Italy",
+        "flag": "🇮🇹",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/214",
+    },
+]
 
 
 def generate_password():
@@ -36,8 +71,11 @@ class VMESS:
     def set_chat(self, chat_id):
         self.chat_id = chat_id
 
-    async def open_page(self, url: str = None) -> bool:
-        url = url or VMESS_CREATE_URL
+    # ═══════════════════════════════════════
+    # 1. فتح الصفحة (URL الدولة)
+    # ═══════════════════════════════════════
+
+    async def open_page(self, url: str) -> bool:
         log.info(f"🌐 فتح: {url}")
         self.page = await self.context.new_page()
         page = self.page
@@ -49,6 +87,10 @@ class VMESS:
         except Exception as e:
             log.error(f"❌ open_page: {e}", exc_info=True)
             return False
+
+    # ═══════════════════════════════════════
+    # 2. إنشاء الحساب
+    # ═══════════════════════════════════════
 
     async def create_account(self) -> dict:
         page = self.page
@@ -175,6 +217,10 @@ class VMESS:
 
         return result
 
+    # ═══════════════════════════════════════
+    # 3. استخراج Link TLS
+    # ═══════════════════════════════════════
+
     async def _extract_link_tls(self, page) -> str:
         for attempt in range(30):
             link = await page.evaluate(r"""
@@ -245,6 +291,10 @@ class VMESS:
 
         return None
 
+    # ═══════════════════════════════════════
+    # 4. فك base64
+    # ═══════════════════════════════════════
+
     def _decode_vmess_link(self, link: str) -> dict:
         try:
             if link.startswith("vmess://"):
@@ -271,6 +321,10 @@ class VMESS:
             log.error(f"❌ _decode_vmess_link: {e}")
             return None
 
+    # ═══════════════════════════════════════
+    # 5. بناء ملف dark
+    # ═══════════════════════════════════════
+
     def _build_vmess_dark(self, vmess_data: dict, password: str) -> str:
         try:
             host = vmess_data.get("add") or vmess_data.get("host") or ""
@@ -279,6 +333,15 @@ class VMESS:
             sni = vmess_data.get("sni") or vmess_data.get("host") or "youtube.com"
             path = vmess_data.get("path") or "/vmess/"
             ws_header_host = vmess_data.get("host") or "googlevideo.com"
+
+            # ✅ الـ payload الجديد
+            NEW_PAYLOAD = (
+                "CONNECT [host_port] HTTP/1.1[crlf]"
+                "Host: youtubekids.com[crlf]"
+                "X-Online-Host: youtubekids.com[crlf]"
+                "Connection: Keep-Alive[crlf]"
+                "User-Agent: Mozilla/5.0[crlf][crlf]"
+            )
 
             outer = {
                 "type": "VMESS",
@@ -297,7 +360,7 @@ class VMESS:
                         "mode": "PROXY",
                         "proxyHost": "34.43.46.91",
                         "proxyPort": 443,
-                        "payload": "CONNECT [host_port] HTTP/1.1[crlf]Host: youtubekids.com[crlf]X-Online-Host: youtubekids.com[crlf]Connection: Keep-Alive[crlf]User-Agent: Mozilla/5.0[crlf][crlf]",
+                        "payload": NEW_PAYLOAD,
                     },
                 },
             }
