@@ -476,11 +476,11 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# VMESS Handler
+# VMESS Handler — يعرض الدول
 # ═══════════════════════════════════════════
 
 async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """زر VMESS"""
+    """زر VMESS — يعرض قائمة الدول"""
     log.info("🌐 VMESS clicked")
 
     query = update.callback_query
@@ -506,22 +506,78 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text="⏳ جاري إنشاء حساب VMESS...",
-        )
-    except Exception:
+        from automation.vmess import COUNTRIES
+    except Exception as e:
+        log.error(f"❌ import COUNTRIES: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطأ: {e}")
         return
 
-    try:
-        from automation.vmess import VMESS
-    except Exception as e:
-        log.error(f"❌ import vmess: {e}")
+    rows = []
+    for idx, c in enumerate(COUNTRIES):
+        rows.append([
+            InlineKeyboardButton(
+                f"{c['flag']} {c['name']}",
+                callback_data=f"vmess_country:{idx}"
+            )
+        ])
+    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
+
+    kb = InlineKeyboardMarkup(rows)
+
+    text = "🌐 *VMESS — اختر الدولة:*"
+
+    if query:
         try:
-            await msg.edit_text(f"❌ خطأ: {e}")
+            await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
         except Exception:
-            pass
+            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+
+
+# ═══════════════════════════════════════════
+# VMESS Country — ينشئ الحساب للدولة
+# ═══════════════════════════════════════════
+
+async def vmess_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ينشئ حساب VMESS للدولة المختارة"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    idx = int(query.data.split(":")[1])
+    log.info(f"🌐 VMESS country: idx={idx}")
+
+    try:
+        from automation.vmess import COUNTRIES, VMESS
+    except Exception as e:
+        log.error(f"❌ import: {e}")
+        await query.message.edit_text(f"❌ خطأ: {e}")
         return
+
+    if idx < 0 or idx >= len(COUNTRIES):
+        await query.message.edit_text("❌ دولة غير موجودة.")
+        return
+
+    country = COUNTRIES[idx]
+    country_name = country["name"]
+    country_flag = country["flag"]
+    country_url = country["url"]
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await query.message.edit_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    await query.message.edit_text(
+        f"⏳ جاري إنشاء حساب VMESS\n"
+        f"🌍 الدولة: {country_flag} {country_name}..."
+    )
 
     browser = StealthBrowser()
     try:
@@ -530,9 +586,9 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vmess.set_chat(chat_id)
         vmess.bot = context.bot
 
-        ok = await vmess.open_page()
+        ok = await vmess.open_page(country_url)
         if not ok:
-            await msg.edit_text("❌ ما قدرناش نفتحو الصفحة.")
+            await query.message.edit_text("❌ ما قدرناش نفتحو الصفحة.")
             try:
                 await browser.close()
             except Exception:
@@ -543,7 +599,7 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not result.get("success"):
             error_msg = result.get("message", "سبب غير معروف")
-            await msg.edit_text(f"❌ فشل.\n\n{error_msg}")
+            await query.message.edit_text(f"❌ فشل.\n\n{error_msg}")
             try:
                 await vmess.close()
                 await browser.close()
@@ -555,7 +611,7 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dark_uri = result.get("dark_uri")
 
         if not dark_uri:
-            await msg.edit_text("❌ فشل بناء ملف dark.")
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
             try:
                 await vmess.close()
                 await browser.close()
@@ -568,6 +624,7 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             text=(
                 f"✅ *VMESS Account*\n\n"
+                f"🌍 الدولة: {country_flag} {country_name}\n"
                 f"🌐 Host: `{vmess_config.get('add', '-')}`\n"
                 f"🔌 Port: `{vmess_config.get('port', '-')}`\n"
                 f"🆔 UUID: `{vmess_config.get('id', '-')}`\n"
@@ -577,8 +634,8 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ إرسال الملف
-        filename_out = "VMESS_4DAY.dark"
+        # ✅ اسم الملف مع إيموجي الدولة
+        filename_out = f"VMESS_4DAY{country_flag}.dark"
         bio = io.BytesIO(dark_uri.encode("utf-8"))
         bio.name = filename_out
         bio.seek(0)
@@ -591,7 +648,7 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
-            await msg.delete()
+            await query.message.delete()
         except Exception:
             pass
 
@@ -605,9 +662,9 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     except Exception as e:
-        log.exception("فشل VMESS")
+        log.exception("فشل VMESS country")
         try:
-            await msg.edit_text(f"❌ فشل: {str(e)[:300]}")
+            await query.message.edit_text(f"❌ فشل: {str(e)[:300]}")
         except Exception:
             pass
         try:
@@ -843,11 +900,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     log.info(f"🔘 callback: {data}")
 
+    # ✅ VMESS — عرض الدول
     if data == "vmess":
         try:
             await handle_vmess(update, context)
         except Exception as e:
             log.exception("فشل VMESS")
+            try:
+                await query.message.reply_text(f"❌ {str(e)[:200]}")
+            except Exception:
+                pass
+        return
+
+    # ✅ VMESS Country — إنشاء الحساب
+    if data.startswith("vmess_country:"):
+        try:
+            await vmess_country_handler(update, context)
+        except Exception as e:
+            log.exception("فشل VMESS country")
             try:
                 await query.message.reply_text(f"❌ {str(e)[:200]}")
             except Exception:
