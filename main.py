@@ -53,7 +53,6 @@ def main():
     app.add_handler(CommandHandler("cancel", handlers.cancel_cmd))
     app.add_handler(CommandHandler("request", handlers.request_cmd))
     app.add_handler(CommandHandler("ssh", handlers.handle_ssh))
-    app.add_handler(CommandHandler("test_methods", handlers.test_methods_cmd))  # ✅ جديد
     app.add_handler(CallbackQueryHandler(handlers.button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, route_text))
     app.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
