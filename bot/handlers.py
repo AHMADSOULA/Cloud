@@ -93,12 +93,59 @@ DARK_FILES = [
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel — بنية sshConfig (المطلوبة)
+# SSH DarkTunnel — تشفير (نفس طريقة التطبيق)
 # ═══════════════════════════════════════════
 
 def _b64_pad(s: str) -> str:
-    s = s.strip()
+    """نضيفو = إذا ناقص"""
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
+
+
+def encrypt_ssh_dark(config: dict) -> str:
+    """
+    ✅ يشفّر config → darktunnel://
+    - JSON مضغوط
+    - base64
+    - يحيد = من الآخر
+    """
+    json_str = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
+    raw = json_str.encode("utf-8")
+    b64 = base64.b64encode(raw).decode("utf-8")
+    b64 = b64.rstrip("=")
+    return "darktunnel://" + b64
+
+
+def build_ssh_dark_encrypted(host: str, username: str, password: str) -> str:
+    """
+    ✅ يبني ملف SSH_4DAY🇫🇷.dark مشفّر
+    - Port: 22 ثابت
+    - اسم: SSH_4DAY🇫🇷
+    """
+    try:
+        config = {
+            "type": "SSH",
+            "name": "SSH_4DAY🇫🇷",
+            "sshTunnelConfig": {
+                "sshConfig": {
+                    "host": host.strip(),
+                    "port": 22,
+                    "username": username.strip(),
+                    "password": password.strip()
+                },
+                "injectConfig": {
+                    "mode": "PROXY",
+                    "proxyHost": "34.43.46.91",
+                    "proxyPort": 443,
+                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
+                }
+            }
+        }
+
+        return encrypt_ssh_dark(config)
+
+    except Exception as e:
+        log.error(f"❌ build_ssh_dark_encrypted: {e}", exc_info=True)
+        return None
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
@@ -122,50 +169,11 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
                 elif isinstance(cur, list):
                     stack.extend(v for v in cur if isinstance(v, (dict, list)))
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        new_b64 = base64.b64encode(raw).decode("utf-8")
+        new_b64 = base64.b64encode(raw).decode("utf-8").rstrip("=")
         return "darktunnel://" + new_b64
     except Exception as e:
         log.error(f"❌ build_darktunnel: {e}", exc_info=True)
         return None
-
-
-def build_ssh_dark_encrypted(host: str, username: str, password: str) -> str:
-    """
-    ✅ يبني ملف SSH dark مشفّر بنفس بنية التطبيق
-    - Port: 22 ثابت
-    - base64 مع rstrip("=")
-    """
-    try:
-        config = {
-            "type": "SSH",
-            "name": f"SSH-{host}",
-            "sshTunnelConfig": {
-                "sshConfig": {
-                    "host": host.strip(),
-                    "port": 22,
-                    "username": username.strip(),
-                    "password": password.strip()
-                },
-                "injectConfig": {
-                    "mode": "PROXY",
-                    "proxyHost": "34.43.46.91",
-                    "proxyPort": 443,
-                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
-                }
-            }
-        }
-
-        json_str = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
-        b64 = base64.b64encode(json_str.encode("utf-8")).decode("utf-8").rstrip("=")
-        return "darktunnel://" + b64
-
-    except Exception as e:
-        log.error(f"❌ build_ssh_dark_encrypted: {e}", exc_info=True)
-        return None
-
-
-# ✅ نبقيو اسم قديم كـ alias باش ما يتعطلش الكود
-build_ssh_dark_with_creds = build_ssh_dark_encrypted
 
 
 def is_admin(user_id: int) -> bool:
