@@ -86,21 +86,55 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dpcHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel — بلا تشفير + Payload قابل للتغيير
+# قوالب SSH جاهزة (base64) — نفس بنية التطبيق
 # ═══════════════════════════════════════════
+
+# ✅ قالب SNAPCHAT
+SNAPCHAT_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE1Mi4yMjguMTYyLjE5IiwidXNlcm5hbWUiOiJ1MzY0NTQ4MjAzMCIsInBhc3N3b3JkIjoibUQxaHo3UHdrViJ9LCJpbmplY3RDb25maWciOnsibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMzQuNDMuNDYuOTEiLCJwcm94eVBvcnQiOjQ0MywicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RfcG9ydF0gW3Byb3RvY29sXVtjcmxmXUhvc3Q6IGFwaS5zbmFwY2hhdC5jb21bY3JsZl1bY3JsZl0ifX19"
+
+# ✅ قالب YOUTUBE
+YOUTUBE_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
+
 
 def _b64_pad(s: str) -> str:
     s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
+def modify_ssh_template(template_uri: str, new_host: str, new_username: str, new_password: str) -> str:
+    """
+    ✅ يعدل قالب SSH ثابت — يغير غير host/username/password
+    """
+    try:
+        raw_b64 = template_uri.split("darktunnel://", 1)[1].strip()
+        raw_b64 = _b64_pad(raw_b64)
+        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
+        data = json.loads(decoded)
+
+        # ✅ نغيرو غير sshConfig
+        ssh_config = data.get("sshTunnelConfig", {}).get("sshConfig", {})
+        ssh_config["host"] = new_host or ""
+        ssh_config["username"] = new_username or ""
+        ssh_config["password"] = new_password or ""
+
+        # ✅ نرجعو للـ base64
+        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        b64 = base64.b64encode(raw).decode("utf-8")
+        return "darktunnel://" + b64
+
+    except Exception as e:
+        log.error(f"❌ modify_ssh_template: {e}", exc_info=True)
+        return None
+
+
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
+    """يعدل wsHeaderHost فـ ملفات VLESS (Cloud Run)"""
     try:
         raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
         raw_b64 = _b64_pad(raw_b64)
@@ -124,46 +158,6 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         return "darktunnel://" + new_b64
     except Exception as e:
         log.error(f"❌ build_darktunnel: {e}", exc_info=True)
-        return None
-
-
-def build_ssh_dark_with_creds(host: str, username: str, password: str, payload: str = None, name: str = "SSH") -> str:
-    """
-    ✅ يبني ملف SSH dark — بلا تشفير
-    - payload: النص ديال Payload (يوتيوب / سناب)
-    - name: اسم الملف داخل JSON
-    """
-    try:
-        # ✅ payload الافتراضي
-        if not payload:
-            payload = "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
-
-        outer = {
-            "type": "SSH",
-            "name": name,
-            "sshTunnelConfig": {
-                "sshConfig": {
-                    "host": host or "",
-                    "port": 22,
-                    "username": username,
-                    "password": password
-                },
-                "injectConfig": {
-                    "mode": "PROXY",
-                    "proxyHost": "34.43.46.91",
-                    "proxyPort": 443,
-                    "payload": payload
-                }
-            }
-        }
-
-        outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
-        outer_b64 = base64.b64encode(outer_json.encode("utf-8")).decode("utf-8")
-
-        return "darktunnel://" + outer_b64
-
-    except Exception as e:
-        log.error(f"❌ build_ssh_dark: {e}", exc_info=True)
         return None
 
 
@@ -544,10 +538,8 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query:
         chat_id = query.message.chat_id
-        msg_id = query.message.message_id
     else:
         chat_id = update.message.chat_id
-        msg_id = None
 
     if await db.is_globally_stopped() and not is_admin(user.id):
         try:
@@ -563,7 +555,6 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    # ✅ قائمة الأزرار
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🎬 YOUTUBE 4DAY", callback_data="ssh_create:youtube")],
         [InlineKeyboardButton("👻 SNAPCHAT 4DAY", callback_data="ssh_create:snapchat")],
@@ -585,22 +576,6 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # SSH Create — ينشئ الحساب حسب النوع
 # ═══════════════════════════════════════════
 
-PAYLOAD_MAP = {
-    "youtube": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
-    "snapchat": "CONNECT [host_port] [protocol][crlf]Host: api.snapchat.com[crlf][crlf]",
-}
-
-NAME_MAP = {
-    "youtube": "YOUTUBE_4DAY🇫🇷",
-    "snapchat": "SNAPCHAT_4DAY🇫🇷",
-}
-
-EMOJI_MAP = {
-    "youtube": "🎬",
-    "snapchat": "👻",
-}
-
-
 async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ينشئ حساب SSH حسب النوع (youtube / snapchat)"""
     query = update.callback_query
@@ -612,9 +587,15 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     kind = query.data.split(":")[1]  # youtube / snapchat
     log.info(f"🔐 SSH create: {kind}")
 
-    payload = PAYLOAD_MAP.get(kind, PAYLOAD_MAP["youtube"])
-    name = NAME_MAP.get(kind, NAME_MAP["youtube"])
-    emoji = EMOJI_MAP.get(kind, "🎬")
+    # ✅ اختيار القالب حسب النوع
+    if kind == "snapchat":
+        template_uri = SNAPCHAT_TEMPLATE_URI
+        filename_out = "SNAPCHAT_4DAY🇫🇷.dark"
+        emoji = "👻"
+    else:
+        template_uri = YOUTUBE_TEMPLATE_URI
+        filename_out = "YOUTUBE_4DAY🇫🇷.dark"
+        emoji = "🎬"
 
     if await db.is_globally_stopped() and not is_admin(user.id):
         await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
@@ -690,8 +671,8 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ بناء ملف dark — بـ payload حسب النوع
-        new_uri = build_ssh_dark_with_creds(host, username, password, payload=payload, name=name)
+        # ✅ تعديل القالب — غير host/user/pass
+        new_uri = modify_ssh_template(template_uri, host, username, password)
         if not new_uri:
             await query.message.edit_text("❌ فشل بناء ملف dark.")
             try:
@@ -701,17 +682,16 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 pass
             return
 
-        # ✅ اسم الملف
-        filename = f"{name}.dark"
+        # ✅ إرسال الملف
         bio = io.BytesIO(new_uri.encode("utf-8"))
-        bio.name = filename
+        bio.name = filename_out
         bio.seek(0)
 
         await context.bot.send_document(
             chat_id=chat_id,
             document=bio,
-            filename=filename,
-            caption=f"📁 {filename}",
+            filename=filename_out,
+            caption=f"📁 {filename_out}",
         )
 
         try:
@@ -967,7 +947,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     log.info(f"🔘 callback: {data}")
 
-    # ✅ SSH
     if data == "ssh_ws":
         try:
             await handle_ssh(update, context)
@@ -979,7 +958,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         return
 
-    # ✅ SSH Create (youtube/snapchat)
     if data.startswith("ssh_create:"):
         try:
             await ssh_create_handler(update, context)
