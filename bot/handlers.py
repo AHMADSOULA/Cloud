@@ -92,7 +92,7 @@ DARK_FILES = [
 
 
 # ═══════════════════════════════════════════
-# قوالب SSH جاهزة (base64) — نفس بنية التطبيق
+# قوالب SSH جاهزة (base64)
 # ═══════════════════════════════════════════
 
 # ✅ قالب SNAPCHAT
@@ -117,13 +117,11 @@ def modify_ssh_template(template_uri: str, new_host: str, new_username: str, new
         decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
         data = json.loads(decoded)
 
-        # ✅ نغيرو غير sshConfig
         ssh_config = data.get("sshTunnelConfig", {}).get("sshConfig", {})
         ssh_config["host"] = new_host or ""
         ssh_config["username"] = new_username or ""
         ssh_config["password"] = new_password or ""
 
-        # ✅ نرجعو للـ base64
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         b64 = base64.b64encode(raw).decode("utf-8")
         return "darktunnel://" + b64
@@ -526,11 +524,10 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket — يظهر 2 أزرار
+# SSH WebSocket — 2 أزرار
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يظهر للمستخدم 2 أزرار: YOUTUBE_4DAY + SNAPCHAT_4DAY"""
     log.info("🔐 SSH WebSocket clicked")
 
     query = update.callback_query
@@ -573,29 +570,17 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# SSH Create — ينشئ الحساب حسب النوع
+# SSH Create — يعرض الدول
 # ═══════════════════════════════════════════
 
 async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ينشئ حساب SSH حسب النوع (youtube / snapchat)"""
     query = update.callback_query
     await query.answer()
 
     user = update.effective_user
-    chat_id = query.message.chat_id
 
-    kind = query.data.split(":")[1]  # youtube / snapchat
+    kind = query.data.split(":")[1]
     log.info(f"🔐 SSH create: {kind}")
-
-    # ✅ اختيار القالب حسب النوع
-    if kind == "snapchat":
-        template_uri = SNAPCHAT_TEMPLATE_URI
-        filename_out = "SNAPCHAT_4DAY🇫🇷.dark"
-        emoji = "👻"
-    else:
-        template_uri = YOUTUBE_TEMPLATE_URI
-        filename_out = "YOUTUBE_4DAY🇫🇷.dark"
-        emoji = "🎬"
 
     if await db.is_globally_stopped() and not is_admin(user.id):
         await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
@@ -605,21 +590,100 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.message.edit_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
         return
 
-    await query.message.edit_text(f"⏳ جاري إنشاء حساب {emoji} {kind.upper()}...")
-
     try:
-        from automation.sshs8 import SSHS8
+        from automation.sshs8 import COUNTRIES
     except Exception as e:
-        log.error(f"❌ import sshs8: {e}")
+        log.error(f"❌ import COUNTRIES: {e}")
         await query.message.edit_text(f"❌ خطأ: {e}")
         return
+
+    rows = []
+    for idx, c in enumerate(COUNTRIES):
+        rows.append([
+            InlineKeyboardButton(
+                f"{c['flag']} {c['name']}",
+                callback_data=f"ssh_country:{kind}:{idx}"
+            )
+        ])
+    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="ssh_ws")])
+
+    kb = InlineKeyboardMarkup(rows)
+
+    emoji = "🎬" if kind == "youtube" else "👻"
+    kind_name = "YOUTUBE" if kind == "youtube" else "SNAPCHAT"
+
+    try:
+        await query.message.edit_text(
+            f"{emoji} *{kind_name} 4DAY*\n\n🌍 *اختر الدولة:*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb,
+        )
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════════
+# SSH Country — ينشئ الحساب للدولة
+# ═══════════════════════════════════════════
+
+async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    parts = query.data.split(":")
+    kind = parts[1]
+    idx = int(parts[2])
+
+    log.info(f"🔐 SSH country: {kind} idx={idx}")
+
+    # ✅ القالب
+    if kind == "snapchat":
+        template_uri = SNAPCHAT_TEMPLATE_URI
+        emoji = "👻"
+        kind_name = "SNAPCHAT"
+    else:
+        template_uri = YOUTUBE_TEMPLATE_URI
+        emoji = "🎬"
+        kind_name = "YOUTUBE"
+
+    try:
+        from automation.sshs8 import COUNTRIES, SSHS8
+    except Exception as e:
+        log.error(f"❌ import: {e}")
+        await query.message.edit_text(f"❌ خطأ: {e}")
+        return
+
+    if idx < 0 or idx >= len(COUNTRIES):
+        await query.message.edit_text("❌ دولة غير موجودة.")
+        return
+
+    country = COUNTRIES[idx]
+    country_name = country["name"]
+    country_flag = country["flag"]
+    country_url = country["url"]
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await query.message.edit_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    await query.message.edit_text(
+        f"⏳ جاري إنشاء حساب {emoji} {kind_name}\n"
+        f"🌍 الدولة: {country_flag} {country_name}..."
+    )
 
     browser = StealthBrowser()
     try:
         ctx = await browser.start()
         ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
 
-        ok = await ssh.open_france_page()
+        ok = await ssh.open_page(country_url)
         if not ok:
             await query.message.edit_text("❌ ما قدرناش نفتحو الصفحة.")
             try:
@@ -661,8 +725,8 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chat_id=chat_id,
             text=(
                 f"✅ *SSH Account*\n\n"
-                f"{emoji} النوع: {kind.upper()}\n"
-                f"🌍 الدولة: France 🇫🇷\n"
+                f"{emoji} النوع: {kind_name}\n"
+                f"🌍 الدولة: {country_flag} {country_name}\n"
                 f"🖥️ Host: `{host}`\n"
                 f"🔌 Port: `22`\n"
                 f"👤 User: `{username}`\n"
@@ -671,7 +735,7 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ تعديل القالب — غير host/user/pass
+        # ✅ تعديل القالب
         new_uri = modify_ssh_template(template_uri, host, username, password)
         if not new_uri:
             await query.message.edit_text("❌ فشل بناء ملف dark.")
@@ -682,7 +746,9 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 pass
             return
 
-        # ✅ إرسال الملف
+        # ✅ اسم الملف
+        filename_out = f"{kind_name}_4DAY{country_flag}.dark"
+
         bio = io.BytesIO(new_uri.encode("utf-8"))
         bio.name = filename_out
         bio.seek(0)
@@ -709,7 +775,7 @@ async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             pass
 
     except Exception as e:
-        log.exception("فشل SSH create")
+        log.exception("فشل SSH country")
         try:
             await query.message.edit_text(f"❌ فشل: {str(e)[:300]}")
         except Exception:
@@ -963,6 +1029,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await ssh_create_handler(update, context)
         except Exception as e:
             log.exception("فشل SSH create")
+            try:
+                await query.message.reply_text(f"❌ {str(e)[:200]}")
+            except Exception:
+                pass
+        return
+
+    if data.startswith("ssh_country:"):
+        try:
+            await ssh_country_handler(update, context)
+        except Exception as e:
+            log.exception("فشل SSH country")
             try:
                 await query.message.reply_text(f"❌ {str(e)[:200]}")
             except Exception:
