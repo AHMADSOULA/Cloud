@@ -93,7 +93,7 @@ DARK_FILES = [
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel — بنية التطبيق الحقيقية
+# SSH DarkTunnel — بنية sshConfig (المطلوبة)
 # ═══════════════════════════════════════════
 
 def _b64_pad(s: str) -> str:
@@ -129,70 +129,43 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         return None
 
 
-def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
+def build_ssh_dark_encrypted(host: str, username: str, password: str) -> str:
     """
-    ✅ يبني ملف SSH_4DAY🇫🇷.dark بنفس بنية التطبيق الرسمية
+    ✅ يبني ملف SSH dark مشفّر بنفس بنية التطبيق
     - Port: 22 ثابت
-    - المعلومات مباشرة فـ encryptedLockedConfig
+    - base64 مع rstrip("=")
     """
     try:
-        outer = {
+        config = {
             "type": "SSH",
-            "name": "SSH_4DAY🇫🇷",
+            "name": f"SSH-{host}",
             "sshTunnelConfig": {
-                "injectConfig": {
-                    "enabled": True,
-                    "mode": "PROXY"
-                }
-            },
-            "encryptedLockedConfig": {
-                "LockedAppConfig": {
-                    "VersionCode": 32,
-                    "VersionName": "1.0.26",
-                    "Message": "APP_/DARK TUNEEL📱\n\nتفاعل مطلوب _50💖\n\nINTERNET SPEED🌐\n\nيدعم العاب ايضا🕹🧩\n+سناب 🌏ومجاني 🥳 في تعليقات",
-                    "ConnectedMessage": "بصحتك🤍_يدعم العاب 🇧🇪_ارجع تفاعل🥳❤️",
-                    "ExpiredAtTimestamp": 0,
-                    "HardwareIdList": [],
-                    "TunnelType": "SSH",
-                    "IsSshLocked": True
+                "sshConfig": {
+                    "host": host.strip(),
+                    "port": 22,
+                    "username": username.strip(),
+                    "password": password.strip()
                 },
-                "EncryptedLockedConfig": {
-                    "InjectConfig": {
-                        "IsEncrypted": True,
-                        "EncryptedMode": "PROXY",
-                        "EncryptedProxyHost": "34.43.46.91",
-                        "EncryptedProxyPort": "443",
-                        "EncryptedServerNameIndication": [],
-                        "EncryptedPayload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
-                        "EncryptedDnsttDnsHost": "1.1.1.1",
-                        "EncryptedDnsttDnsPort": "53",
-                        "EncryptedDnsttServerName": [],
-                        "EncryptedDnsttPubkey": []
-                    },
-                    "SshConfig": {
-                        "IsEncrypted": True,
-                        "IsLocked": True,
-                        "EncryptedHost": host or "",
-                        "EncryptedPort": "22",
-                        "EncryptedUsername": username or "",
-                        "EncryptedPassword": password or ""
-                    },
-                    "V2RayConfig": {
-                        "IsEncrypted": True,
-                        "IsInjectModeEnabled": False,
-                        "EncryptedConfig": []
-                    }
+                "injectConfig": {
+                    "mode": "PROXY",
+                    "proxyHost": "34.43.46.91",
+                    "proxyPort": 443,
+                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
                 }
             }
         }
 
-        outer_json = json.dumps(outer, ensure_ascii=False, separators=(",", ":"))
-        outer_b64 = base64.b64encode(outer_json.encode("utf-8")).decode("utf-8")
-        return "darktunnel://" + outer_b64
+        json_str = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
+        b64 = base64.b64encode(json_str.encode("utf-8")).decode("utf-8").rstrip("=")
+        return "darktunnel://" + b64
 
     except Exception as e:
-        log.error(f"❌ build_ssh_dark: {e}", exc_info=True)
+        log.error(f"❌ build_ssh_dark_encrypted: {e}", exc_info=True)
         return None
+
+
+# ✅ نبقيو اسم قديم كـ alias باش ما يتعطلش الكود
+build_ssh_dark_with_creds = build_ssh_dark_encrypted
 
 
 def is_admin(user_id: int) -> bool:
@@ -673,8 +646,8 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ بناء ملف dark بنفس بنية التطبيق
-        new_uri = build_ssh_dark_with_creds(host, username, password)
+        # ✅ بناء ملف dark المشفر
+        new_uri = build_ssh_dark_encrypted(host, username, password)
         if not new_uri:
             await msg.edit_text("❌ فشل بناء ملف dark.")
             try:
