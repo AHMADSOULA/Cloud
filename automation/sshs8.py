@@ -19,9 +19,9 @@ log = get_logger("SSHS8")
 
 COUNTRIES = [
     {
-        "name": "Italy",
-        "flag": "🇮🇹",
-        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/212",
+        "name": "France",
+        "flag": "🇫🇷",
+        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113",
     },
     {
         "name": "Germany",
@@ -34,19 +34,9 @@ COUNTRIES = [
         "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/236",
     },
     {
-        "name": "Japan",
-        "flag": "🇯🇵",
-        "url": "https://vpnasia.sshs8.com/accounts/SSH_WEBSOCKET/1",
-    },
-    {
         "name": "USA",
         "flag": "🇺🇸",
         "url": "https://vpnnamerica.sshs8.com/accounts/SSH_WEBSOCKET/58",
-    },
-    {
-        "name": "Brazil",
-        "flag": "🇧🇷",
-        "url": "https://vpnsamerica.sshs8.com/accounts/SSH_WEBSOCKET/1",
     },
 ]
 
@@ -235,15 +225,15 @@ class SSHS8:
         result = {"host": None, "domain": None, "username": None, "password": None}
 
         try:
-            await page.wait_for_load_state("networkidle", timeout=10000)
+            await page.wait_for_load_state("networkidle", timeout=20000)
         except Exception:
             pass
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(3000)
 
-        for attempt in range(20):
+        for attempt in range(40):
             data = await page.evaluate(r"""
                 () => {
-                    const out = { all_values: [], host: null, domain: null, username: null, password: null };
+                    const out = { all_values: [], host: null, domain: null, username: null, password: null, debug: [] };
 
                     const allInputs = Array.from(document.querySelectorAll('input'));
                     
@@ -254,6 +244,31 @@ class SSHS8:
                         if (val.length < 2) continue;
                         
                         out.all_values.push({ value: val });
+                        out.debug.push({
+                            value: val.substring(0, 40),
+                            type: inp.type || '',
+                            name: inp.name || '',
+                            id: inp.id || '',
+                        });
+                    }
+                    
+                    if (out.all_values.length === 0) {
+                        const bodyText = document.body.innerText || '';
+                        
+                        const patterns = {
+                            ipv4: /(?:IPv4|IP|Host)[\s:]*([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/i,
+                            domain: /(?:Domain|Hostname)[\s:]*([a-z0-9\-\.]+\.[a-z]{2,})/i,
+                            username: /(?:Username|User)[\s:]*([a-zA-Z0-9_\-]{4,30})/i,
+                            password: /(?:Password|Pass)[\s:]*([a-zA-Z0-9!@#$%^&*_\-]{6,40})/i,
+                        };
+                        
+                        for (const [key, regex] of Object.entries(patterns)) {
+                            const m = bodyText.match(regex);
+                            if (m && m[1]) {
+                                out.all_values.push({ value: m[1] });
+                                out.debug.push({ value: m[1].substring(0, 40), source: 'text_' + key });
+                            }
+                        }
                     }
                     
                     const vals = out.all_values.map(x => x.value);
@@ -267,6 +282,23 @@ class SSHS8:
                                 !v.startsWith('172.16.') &&
                                 !v.startsWith('127.')) {
                                 out.host = v;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!out.host) {
+                        const bodyText = document.body.innerText || '';
+                        const ips = bodyText.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
+                        for (const ip of ips) {
+                            const parts = ip.split('.').map(Number);
+                            if (parts.every(p => p >= 0 && p <= 255) &&
+                                !ip.startsWith('192.168.') &&
+                                !ip.startsWith('10.') &&
+                                !ip.startsWith('172.16.') &&
+                                !ip.startsWith('127.') &&
+                                ip !== '0.0.0.0') {
+                                out.host = ip;
                                 break;
                             }
                         }
@@ -306,6 +338,8 @@ class SSHS8:
             """)
 
             log.info(f"🔍 attempt {attempt+1}: host={data.get('host')} domain={data.get('domain')} user={data.get('username')} pass={data.get('password')}")
+            if attempt == 0:
+                log.info(f"🔍 debug: {data.get('debug', [])[:10]}")
 
             if data.get("host") and not result["host"]:
                 result["host"] = data["host"]
@@ -320,7 +354,7 @@ class SSHS8:
                 log.info("✅ معلومات كاملة!")
                 break
 
-            await page.wait_for_timeout(1500)
+            await page.wait_for_timeout(2000)
 
         return result
 
