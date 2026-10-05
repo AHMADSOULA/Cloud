@@ -25,11 +25,6 @@ async def route_text(update, context):
     if await handlers.handle_admin_input(update, context, text):
         return
 
-    # ✅ SSH command
-    if text.strip().lower() in ("ssh", "🔐 ssh"):
-        await handlers.handle_ssh(update, context)
-        return
-
     # ✅ رابط
     if extract_urls(text):
         await handlers.handle_url(update, context)
@@ -52,7 +47,6 @@ def main():
     app.add_handler(CommandHandler("status", handlers.status_cmd))
     app.add_handler(CommandHandler("cancel", handlers.cancel_cmd))
     app.add_handler(CommandHandler("request", handlers.request_cmd))
-    app.add_handler(CommandHandler("ssh", handlers.handle_ssh))
     app.add_handler(CallbackQueryHandler(handlers.button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, route_text))
     app.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
