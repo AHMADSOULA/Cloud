@@ -91,43 +91,9 @@ DARK_FILES = [
 ]
 
 
-# ═══════════════════════════════════════════
-# قوالب SSH جاهزة (base64)
-# ═══════════════════════════════════════════
-
-# ✅ قالب SNAPCHAT
-SNAPCHAT_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE1Mi4yMjguMTYyLjE5IiwidXNlcm5hbWUiOiJ1MzY0NTQ4MjAzMCIsInBhc3N3b3JkIjoibUQxaHo3UHdrViJ9LCJpbmplY3RDb25maWciOnsibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMzQuNDMuNDYuOTEiLCJwcm94eVBvcnQiOjQ0MywicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RfcG9ydF0gW3Byb3RvY29sXVtjcmxmXUhvc3Q6IGFwaS5zbmFwY2hhdC5jb21bY3JsZl1bY3JsZl0ifX19"
-
-# ✅ قالب YOUTUBE
-YOUTUBE_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjM4LjEwNy4yMzYuMTY2IiwidXNlcm5hbWUiOiJ1NjMxNTg3NzExMiIsInBhc3N3b3JkIjoiUE5Va1hpaG15biJ9LCJpbmplY3RDb25maWciOnsibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMzQuNDMuNDYuOTEiLCJwcm94eVBvcnQiOjQ0MywicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RfcG9ydF0gW3Byb3RvY29sXVtjcmxmXUhvc3Q6IGdvb2dsZXZpZGVvLmNvbVtjcmxmXVtjcmxmXSJ9fX0="
-
 def _b64_pad(s: str) -> str:
     s = s.strip()
     return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
-
-
-def modify_ssh_template(template_uri: str, new_host: str, new_username: str, new_password: str) -> str:
-    """
-    ✅ يعدل قالب SSH ثابت — يغير غير host/username/password
-    """
-    try:
-        raw_b64 = template_uri.split("darktunnel://", 1)[1].strip()
-        raw_b64 = _b64_pad(raw_b64)
-        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
-        data = json.loads(decoded)
-
-        ssh_config = data.get("sshTunnelConfig", {}).get("sshConfig", {})
-        ssh_config["host"] = new_host or ""
-        ssh_config["username"] = new_username or ""
-        ssh_config["password"] = new_password or ""
-
-        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        b64 = base64.b64encode(raw).decode("utf-8")
-        return "darktunnel://" + b64
-
-    except Exception as e:
-        log.error(f"❌ modify_ssh_template: {e}", exc_info=True)
-        return None
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
@@ -270,19 +236,6 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.clear_session(user.id)
-
-    ssh = context.user_data.pop("ssh_obj", None)
-    if ssh:
-        try:
-            await ssh.close()
-        except Exception:
-            pass
-    browser = context.user_data.pop("ssh_browser", None)
-    if browser:
-        try:
-            await browser.close()
-        except Exception:
-            pass
 
     b = context.bot_data.pop(f"browser_{user.id}", None)
     if b:
@@ -523,11 +476,12 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket — 2 أزرار
+# VMESS Handler
 # ═══════════════════════════════════════════
 
-async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    log.info("🔐 SSH WebSocket clicked")
+async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """زر VMESS"""
+    log.info("🌐 VMESS clicked")
 
     query = update.callback_query
     user = update.effective_user
@@ -551,169 +505,59 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎬 YOUTUBE 4DAY", callback_data="ssh_create:youtube")],
-        [InlineKeyboardButton("👻 SNAPCHAT 4DAY", callback_data="ssh_create:snapchat")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
-    ])
-
-    text = "🔐 *SSH WebSocket*\n\nاختر النوع:"
-
-    if query:
-        try:
-            await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
-        except Exception:
-            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
-    else:
-        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
-
-
-# ═══════════════════════════════════════════
-# SSH Create — يعرض الدول
-# ═══════════════════════════════════════════
-
-async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = update.effective_user
-
-    kind = query.data.split(":")[1]
-    log.info(f"🔐 SSH create: {kind}")
-
-    if await db.is_globally_stopped() and not is_admin(user.id):
-        await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
-        return
-
-    if not await db.has_access(user.id):
-        await query.message.edit_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
-        return
-
     try:
-        from automation.sshs8 import COUNTRIES
-    except Exception as e:
-        log.error(f"❌ import COUNTRIES: {e}")
-        await query.message.edit_text(f"❌ خطأ: {e}")
-        return
-
-    rows = []
-    for idx, c in enumerate(COUNTRIES):
-        rows.append([
-            InlineKeyboardButton(
-                f"{c['flag']} {c['name']}",
-                callback_data=f"ssh_country:{kind}:{idx}"
-            )
-        ])
-    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="ssh_ws")])
-
-    kb = InlineKeyboardMarkup(rows)
-
-    emoji = "🎬" if kind == "youtube" else "👻"
-    kind_name = "YOUTUBE" if kind == "youtube" else "SNAPCHAT"
-
-    try:
-        await query.message.edit_text(
-            f"{emoji} *{kind_name} 4DAY*\n\n🌍 *اختر الدولة:*",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=kb,
+        msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text="⏳ جاري إنشاء حساب VMESS...",
         )
     except Exception:
-        pass
-
-
-# ═══════════════════════════════════════════
-# SSH Country — ينشئ الحساب للدولة
-# ═══════════════════════════════════════════
-
-async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = update.effective_user
-    chat_id = query.message.chat_id
-
-    parts = query.data.split(":")
-    kind = parts[1]
-    idx = int(parts[2])
-
-    log.info(f"🔐 SSH country: {kind} idx={idx}")
-
-    # ✅ القالب
-    if kind == "snapchat":
-        template_uri = SNAPCHAT_TEMPLATE_URI
-        emoji = "👻"
-        kind_name = "SNAPCHAT"
-    else:
-        template_uri = YOUTUBE_TEMPLATE_URI
-        emoji = "🎬"
-        kind_name = "YOUTUBE"
+        return
 
     try:
-        from automation.sshs8 import COUNTRIES, SSHS8
+        from automation.vmess import VMESS
     except Exception as e:
-        log.error(f"❌ import: {e}")
-        await query.message.edit_text(f"❌ خطأ: {e}")
+        log.error(f"❌ import vmess: {e}")
+        try:
+            await msg.edit_text(f"❌ خطأ: {e}")
+        except Exception:
+            pass
         return
-
-    if idx < 0 or idx >= len(COUNTRIES):
-        await query.message.edit_text("❌ دولة غير موجودة.")
-        return
-
-    country = COUNTRIES[idx]
-    country_name = country["name"]
-    country_flag = country["flag"]
-    country_url = country["url"]
-
-    if await db.is_globally_stopped() and not is_admin(user.id):
-        await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
-        return
-
-    if not await db.has_access(user.id):
-        await query.message.edit_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
-        return
-
-    await query.message.edit_text(
-        f"⏳ جاري إنشاء حساب {emoji} {kind_name}\n"
-        f"🌍 الدولة: {country_flag} {country_name}..."
-    )
 
     browser = StealthBrowser()
     try:
         ctx = await browser.start()
-        ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
+        vmess = VMESS(ctx, sender=None, user_tag=user.username or user.first_name)
+        vmess.set_chat(chat_id)
+        vmess.bot = context.bot
 
-        ok = await ssh.open_page(country_url)
+        ok = await vmess.open_page()
         if not ok:
-            await query.message.edit_text("❌ ما قدرناش نفتحو الصفحة.")
+            await msg.edit_text("❌ ما قدرناش نفتحو الصفحة.")
             try:
                 await browser.close()
             except Exception:
                 pass
             return
 
-        result = await ssh.create_account()
+        result = await vmess.create_account()
 
         if not result.get("success"):
             error_msg = result.get("message", "سبب غير معروف")
-            await query.message.edit_text(f"❌ فشل.\n\n{error_msg}")
+            await msg.edit_text(f"❌ فشل.\n\n{error_msg}")
             try:
-                await ssh.close()
+                await vmess.close()
                 await browser.close()
             except Exception:
                 pass
             return
 
-        host = result.get("host")
-        username = result.get("username")
-        password = result.get("password")
+        vmess_config = result.get("vmess_config") or {}
+        dark_uri = result.get("dark_uri")
 
-        if not host or not username or not password:
-            await query.message.edit_text(
-                "❌ بيانات غير مكتملة.\n"
-                f"Host: {host}\nUser: {username}\nPass: {password}"
-            )
+        if not dark_uri:
+            await msg.edit_text("❌ فشل بناء ملف dark.")
             try:
-                await ssh.close()
+                await vmess.close()
                 await browser.close()
             except Exception:
                 pass
@@ -723,32 +567,19 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         await context.bot.send_message(
             chat_id=chat_id,
             text=(
-                f"✅ *SSH Account*\n\n"
-                f"{emoji} النوع: {kind_name}\n"
-                f"🌍 الدولة: {country_flag} {country_name}\n"
-                f"🖥️ Host: `{host}`\n"
-                f"🔌 Port: `22`\n"
-                f"👤 User: `{username}`\n"
-                f"🔑 Pass: `{password}`"
+                f"✅ *VMESS Account*\n\n"
+                f"🌐 Host: `{vmess_config.get('add', '-')}`\n"
+                f"🔌 Port: `{vmess_config.get('port', '-')}`\n"
+                f"🆔 UUID: `{vmess_config.get('id', '-')}`\n"
+                f"🔐 SNI: `{vmess_config.get('sni', '-')}`\n"
+                f"📁 Path: `{vmess_config.get('path', '-')}`"
             ),
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ تعديل القالب
-        new_uri = modify_ssh_template(template_uri, host, username, password)
-        if not new_uri:
-            await query.message.edit_text("❌ فشل بناء ملف dark.")
-            try:
-                await ssh.close()
-                await browser.close()
-            except Exception:
-                pass
-            return
-
-        # ✅ اسم الملف
-        filename_out = f"{kind_name}_4DAY{country_flag}.dark"
-
-        bio = io.BytesIO(new_uri.encode("utf-8"))
+        # ✅ إرسال الملف
+        filename_out = "VMESS_4DAY.dark"
+        bio = io.BytesIO(dark_uri.encode("utf-8"))
         bio.name = filename_out
         bio.seek(0)
 
@@ -760,12 +591,12 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
         try:
-            await query.message.delete()
+            await msg.delete()
         except Exception:
             pass
 
         try:
-            await ssh.close()
+            await vmess.close()
         except Exception:
             pass
         try:
@@ -774,9 +605,9 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
 
     except Exception as e:
-        log.exception("فشل SSH country")
+        log.exception("فشل VMESS")
         try:
-            await query.message.edit_text(f"❌ فشل: {str(e)[:300]}")
+            await msg.edit_text(f"❌ فشل: {str(e)[:300]}")
         except Exception:
             pass
         try:
@@ -1012,33 +843,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     log.info(f"🔘 callback: {data}")
 
-    if data == "ssh_ws":
+    if data == "vmess":
         try:
-            await handle_ssh(update, context)
+            await handle_vmess(update, context)
         except Exception as e:
-            log.exception("فشل SSH")
-            try:
-                await query.message.reply_text(f"❌ {str(e)[:200]}")
-            except Exception:
-                pass
-        return
-
-    if data.startswith("ssh_create:"):
-        try:
-            await ssh_create_handler(update, context)
-        except Exception as e:
-            log.exception("فشل SSH create")
-            try:
-                await query.message.reply_text(f"❌ {str(e)[:200]}")
-            except Exception:
-                pass
-        return
-
-    if data.startswith("ssh_country:"):
-        try:
-            await ssh_country_handler(update, context)
-        except Exception as e:
-            log.exception("فشل SSH country")
+            log.exception("فشل VMESS")
             try:
                 await query.message.reply_text(f"❌ {str(e)[:200]}")
             except Exception:
