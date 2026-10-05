@@ -20,7 +20,7 @@ log = get_logger("Handlers")
 
 
 # ═══════════════════════════════════════════
-# طابور (priority-based)
+# طابور
 # ═══════════════════════════════════════════
 
 class JobQueue:
@@ -86,13 +86,13 @@ DARK_FILES = [
     },
     {
         "name": "FREE_4H",
-        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
+        "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dpcHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19",
     },
 ]
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel — بلا تشفير
+# SSH DarkTunnel — بلا تشفير + Payload قابل للتغيير
 # ═══════════════════════════════════════════
 
 def _b64_pad(s: str) -> str:
@@ -127,14 +127,20 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
         return None
 
 
-def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
+def build_ssh_dark_with_creds(host: str, username: str, password: str, payload: str = None, name: str = "SSH") -> str:
     """
     ✅ يبني ملف SSH dark — بلا تشفير
+    - payload: النص ديال Payload (يوتيوب / سناب)
+    - name: اسم الملف داخل JSON
     """
     try:
+        # ✅ payload الافتراضي
+        if not payload:
+            payload = "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
+
         outer = {
             "type": "SSH",
-            "name": "SSH",
+            "name": name,
             "sshTunnelConfig": {
                 "sshConfig": {
                     "host": host or "",
@@ -146,7 +152,7 @@ def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
                     "mode": "PROXY",
                     "proxyHost": "34.43.46.91",
                     "proxyPort": 443,
-                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
+                    "payload": payload
                 }
             }
         }
@@ -526,10 +532,11 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# SSH WebSocket — France مباشرة
+# SSH WebSocket — يظهر 2 أزرار
 # ═══════════════════════════════════════════
 
 async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يظهر للمستخدم 2 أزرار: YOUTUBE_4DAY + SNAPCHAT_4DAY"""
     log.info("🔐 SSH WebSocket clicked")
 
     query = update.callback_query
@@ -537,8 +544,10 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query:
         chat_id = query.message.chat_id
+        msg_id = query.message.message_id
     else:
         chat_id = update.message.chat_id
+        msg_id = None
 
     if await db.is_globally_stopped() and not is_admin(user.id):
         try:
@@ -554,22 +563,74 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    try:
-        msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text="⏳ جاري إنشاء حساب SSH France...",
-        )
-    except Exception:
+    # ✅ قائمة الأزرار
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎬 YOUTUBE 4DAY", callback_data="ssh_create:youtube")],
+        [InlineKeyboardButton("👻 SNAPCHAT 4DAY", callback_data="ssh_create:snapchat")],
+        [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
+    ])
+
+    text = "🔐 *SSH WebSocket*\n\nاختر النوع:"
+
+    if query:
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+        except Exception:
+            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+
+
+# ═══════════════════════════════════════════
+# SSH Create — ينشئ الحساب حسب النوع
+# ═══════════════════════════════════════════
+
+PAYLOAD_MAP = {
+    "youtube": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
+    "snapchat": "CONNECT [host_port] [protocol][crlf]Host: api.snapchat.com[crlf][crlf]",
+}
+
+NAME_MAP = {
+    "youtube": "YOUTUBE_4DAY🇫🇷",
+    "snapchat": "SNAPCHAT_4DAY🇫🇷",
+}
+
+EMOJI_MAP = {
+    "youtube": "🎬",
+    "snapchat": "👻",
+}
+
+
+async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ينشئ حساب SSH حسب النوع (youtube / snapchat)"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    kind = query.data.split(":")[1]  # youtube / snapchat
+    log.info(f"🔐 SSH create: {kind}")
+
+    payload = PAYLOAD_MAP.get(kind, PAYLOAD_MAP["youtube"])
+    name = NAME_MAP.get(kind, NAME_MAP["youtube"])
+    emoji = EMOJI_MAP.get(kind, "🎬")
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
         return
+
+    if not await db.has_access(user.id):
+        await query.message.edit_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    await query.message.edit_text(f"⏳ جاري إنشاء حساب {emoji} {kind.upper()}...")
 
     try:
         from automation.sshs8 import SSHS8
     except Exception as e:
         log.error(f"❌ import sshs8: {e}")
-        try:
-            await msg.edit_text(f"❌ خطأ: {e}")
-        except Exception:
-            pass
+        await query.message.edit_text(f"❌ خطأ: {e}")
         return
 
     browser = StealthBrowser()
@@ -579,7 +640,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         ok = await ssh.open_france_page()
         if not ok:
-            await msg.edit_text("❌ ما قدرناش نفتحو الصفحة.")
+            await query.message.edit_text("❌ ما قدرناش نفتحو الصفحة.")
             try:
                 await browser.close()
             except Exception:
@@ -590,7 +651,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not result.get("success"):
             error_msg = result.get("message", "سبب غير معروف")
-            await msg.edit_text(f"❌ فشل.\n\n{error_msg}")
+            await query.message.edit_text(f"❌ فشل.\n\n{error_msg}")
             try:
                 await ssh.close()
                 await browser.close()
@@ -603,7 +664,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         password = result.get("password")
 
         if not host or not username or not password:
-            await msg.edit_text(
+            await query.message.edit_text(
                 "❌ بيانات غير مكتملة.\n"
                 f"Host: {host}\nUser: {username}\nPass: {password}"
             )
@@ -619,6 +680,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             text=(
                 f"✅ *SSH Account*\n\n"
+                f"{emoji} النوع: {kind.upper()}\n"
                 f"🌍 الدولة: France 🇫🇷\n"
                 f"🖥️ Host: `{host}`\n"
                 f"🔌 Port: `22`\n"
@@ -628,10 +690,10 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ بناء ملف dark
-        new_uri = build_ssh_dark_with_creds(host, username, password)
+        # ✅ بناء ملف dark — بـ payload حسب النوع
+        new_uri = build_ssh_dark_with_creds(host, username, password, payload=payload, name=name)
         if not new_uri:
-            await msg.edit_text("❌ فشل بناء ملف dark.")
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
             try:
                 await ssh.close()
                 await browser.close()
@@ -639,8 +701,8 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             return
 
-        # ✅ اسم الملف: SSH_4DAY🇫🇷.dark
-        filename = "SSH_4DAY🇫🇷.dark"
+        # ✅ اسم الملف
+        filename = f"{name}.dark"
         bio = io.BytesIO(new_uri.encode("utf-8"))
         bio.name = filename
         bio.seek(0)
@@ -653,7 +715,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
-            await msg.delete()
+            await query.message.delete()
         except Exception:
             pass
 
@@ -667,9 +729,9 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     except Exception as e:
-        log.exception("فشل SSH")
+        log.exception("فشل SSH create")
         try:
-            await msg.edit_text(f"❌ فشل: {str(e)[:300]}")
+            await query.message.edit_text(f"❌ فشل: {str(e)[:300]}")
         except Exception:
             pass
         try:
@@ -905,11 +967,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     log.info(f"🔘 callback: {data}")
 
+    # ✅ SSH
     if data == "ssh_ws":
         try:
             await handle_ssh(update, context)
         except Exception as e:
             log.exception("فشل SSH")
+            try:
+                await query.message.reply_text(f"❌ {str(e)[:200]}")
+            except Exception:
+                pass
+        return
+
+    # ✅ SSH Create (youtube/snapchat)
+    if data.startswith("ssh_create:"):
+        try:
+            await ssh_create_handler(update, context)
+        except Exception as e:
+            log.exception("فشل SSH create")
             try:
                 await query.message.reply_text(f"❌ {str(e)[:200]}")
             except Exception:
