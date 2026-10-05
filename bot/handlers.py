@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import base64
 import json
 import datetime
@@ -132,7 +133,9 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 
 def build_ssh_dark_with_creds(host: str, username: str, password: str) -> str:
     """
-    يبني ملف SSH dark — النسخة الناجحة
+    ✅ يبني ملف SSH dark — النسخة الناجحة
+    - بنية sshConfig مباشرة
+    - base64 بلا rstrip
     """
     try:
         outer = {
@@ -685,6 +688,50 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         log.exception("فشل SSH country")
         await query.message.reply_text(f"❌ فشل: {str(e)[:300]}")
+
+
+# ═══════════════════════════════════════════
+# اختبار طرق التشفير (ADMIN فقط)
+# ═══════════════════════════════════════════
+
+async def test_methods_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر /test_methods"""
+    user = update.effective_user
+
+    if not is_admin(user.id):
+        await update.message.reply_text("🚫 نتاج ماشي ADMIN")
+        return
+
+    args = context.args
+    if len(args) < 3:
+        await update.message.reply_text(
+            "❌ *استعمال:*\n"
+            "`/test_methods HOST USER PASS`\n\n"
+            "مثال:\n"
+            "`/test_methods 152.228.162.19 u8313114335 VR0ookwevB`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    host, username, password = args[0], args[1], args[2]
+
+    await update.message.reply_text(
+        f"🧪 *بدء اختبار 10 طرق*\n\n"
+        f"🖥️ Host: `{host}`\n"
+        f"👤 User: `{username}`\n"
+        f"🔑 Pass: `{password}`\n\n"
+        f"⏳ غادي نرسلو كل طريقة كملف...",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    from utils.dark_encrypt_test import test_all_methods_and_notify
+    await test_all_methods_and_notify(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        host=host,
+        username=username,
+        password=password,
+    )
 
 
 # ═══════════════════════════════════════════
