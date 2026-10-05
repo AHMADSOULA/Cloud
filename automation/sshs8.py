@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113
-- يفتح الصفحة، يقرا الدول، يعبي Password، يضغط Create
+- يفتح الصفحة، يعبي Password، يضغط Create
 - يستخرج Host/User/Pass
 - سريع بلا صور
 """
@@ -36,10 +36,10 @@ class SSHS8:
         self.chat_id = chat_id
 
     # ═══════════════════════════════════════
-    # 1. فتح الصفحة الرئيسية + قراءة الدول
+    # 1. فتح الصفحة
     # ═══════════════════════════════════════
 
-    async def open_ssh_websocket(self) -> list:
+    async def open_france_page(self) -> bool:
         log.info(f"🌐 فتح: {FRANCE_CREATE_URL}")
         self.page = await self.context.new_page()
         page = self.page
@@ -47,59 +47,16 @@ class SSHS8:
         try:
             await page.goto(FRANCE_CREATE_URL, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(3000)
-
-            countries = await page.evaluate(r"""
-                () => {
-                    const out = [];
-                    
-                    const selects = document.querySelectorAll('select');
-                    for (const sel of selects) {
-                        for (const opt of sel.options) {
-                            const t = (opt.textContent || '').trim();
-                            if (t && t.length > 1 && t.length < 50 && 
-                                !t.toLowerCase().includes('select') &&
-                                !t.toLowerCase().includes('choose')) {
-                                out.push(t);
-                            }
-                        }
-                    }
-                    
-                    if (out.length === 0) {
-                        const flags = document.querySelectorAll('[class*="country"], [class*="flag"], [data-country]');
-                        for (const el of flags) {
-                            const t = (el.textContent || el.getAttribute('data-country') || '').trim();
-                            if (t && t.length > 1 && t.length < 50) {
-                                out.push(t);
-                            }
-                        }
-                    }
-                    
-                    if (out.length === 0) {
-                        const links = document.querySelectorAll('a[href*="country"], a[href*="region"], a[href*="server"]');
-                        for (const a of links) {
-                            const t = (a.textContent || '').trim();
-                            if (t && t.length > 1 && t.length < 50) {
-                                out.push(t);
-                            }
-                        }
-                    }
-                    
-                    return [...new Set(out)];
-                }
-            """)
-
-            log.info(f"🌍 Countries from page: {len(countries)}")
-            return countries or []
-
+            return True
         except Exception as e:
-            log.error(f"❌ open_ssh_websocket: {e}", exc_info=True)
-            return []
+            log.error(f"❌ open_france_page: {e}", exc_info=True)
+            return False
 
     # ═══════════════════════════════════════
     # 2. تعبئة Password + Create
     # ═══════════════════════════════════════
 
-    async def create_account(self, country: str = "France") -> dict:
+    async def create_account(self) -> dict:
         page = self.page
         if not page:
             return {"success": False, "error": "no_page"}
@@ -110,23 +67,14 @@ class SSHS8:
             "success": False,
             "username": None,
             "password": password_input_value,
-            "country": country,
+            "country": "France",
             "host": None,
             "domain": None,
             "message": None,
         }
 
         try:
-            if country and country not in ("France", ""):
-                try:
-                    select = page.locator("select").first
-                    if await select.count() > 0:
-                        await select.select_option(label=country, timeout=3000)
-                        await page.wait_for_timeout(1000)
-                        log.info(f"✅ Country selected: {country}")
-                except Exception as e:
-                    log.warning(f"⚠️ select country: {e}")
-
+            # ✅ 1. نعبيو Password
             filled = False
             for sel in [
                 'input[type="password"]',
@@ -155,6 +103,7 @@ class SSHS8:
             await page.wait_for_timeout(500)
             url_before = page.url
 
+            # ✅ 2. نضغطو Create
             clicked = False
             for sel in [
                 'button:has-text("Create an account")',
@@ -198,6 +147,7 @@ class SSHS8:
                 result["message"] = "❌ ما لقيناش زر Create"
                 return result
 
+            # ✅ 3. نستناو URL يتبدل
             for i in range(20):
                 await page.wait_for_timeout(500)
                 if page.url != url_before:
@@ -206,6 +156,7 @@ class SSHS8:
 
             await page.wait_for_timeout(2000)
 
+            # ✅ 4. استخراج المعلومات
             creds = await self._extract_by_order(page)
 
             result["host"] = creds.get("host")
@@ -233,7 +184,7 @@ class SSHS8:
         return result
 
     # ═══════════════════════════════════════
-    # 3. استخراج المعلومات
+    # 3. استخراج المعلومات — بالترتيب
     # ═══════════════════════════════════════
 
     async def _extract_by_order(self, page) -> dict:
