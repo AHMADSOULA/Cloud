@@ -102,20 +102,17 @@ def _b64_pad(s: str) -> str:
 
 
 def encrypt_ssh_dark(config: dict) -> str:
-    """✅ يشفّر config → darktunnel://"""
-    json_str = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
-    raw = json_str.encode("utf-8")
+    """✅ يشفّر config → darktunnel:// (نفس طريقة GC.py)"""
+    raw = json.dumps(config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     b64 = base64.b64encode(raw).decode("utf-8")
-    b64 = b64.rstrip("=")
     return "darktunnel://" + b64
 
 
 def build_ssh_dark_encrypted(host: str, username: str, password: str) -> str:
     """
     ✅ يبني ملف SSH_4DAY🇫🇷.dark مقفول (Locked)
-    - نفس بنية التطبيق الرسمية
-    - المعلومات مخفية فـ encryptedLockedConfig
-    - Port: 22 ثابت
+    - بنية encryptedLockedConfig
+    - بلا rstrip("=")
     """
     try:
         config = {
@@ -196,7 +193,7 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
                 elif isinstance(cur, list):
                     stack.extend(v for v in cur if isinstance(v, (dict, list)))
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        new_b64 = base64.b64encode(raw).decode("utf-8").rstrip("=")
+        new_b64 = base64.b64encode(raw).decode("utf-8")
         return "darktunnel://" + new_b64
     except Exception as e:
         log.error(f"❌ build_darktunnel: {e}", exc_info=True)
