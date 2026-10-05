@@ -93,7 +93,7 @@ DARK_FILES = [
 
 
 # ═══════════════════════════════════════════
-# SSH DarkTunnel — تشفير (نفس طريقة التطبيق)
+# SSH DarkTunnel — Locked + تشفير
 # ═══════════════════════════════════════════
 
 def _b64_pad(s: str) -> str:
@@ -102,12 +102,7 @@ def _b64_pad(s: str) -> str:
 
 
 def encrypt_ssh_dark(config: dict) -> str:
-    """
-    ✅ يشفّر config → darktunnel://
-    - JSON مضغوط
-    - base64
-    - يحيد = من الآخر
-    """
+    """✅ يشفّر config → darktunnel://"""
     json_str = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
     raw = json_str.encode("utf-8")
     b64 = base64.b64encode(raw).decode("utf-8")
@@ -117,26 +112,58 @@ def encrypt_ssh_dark(config: dict) -> str:
 
 def build_ssh_dark_encrypted(host: str, username: str, password: str) -> str:
     """
-    ✅ يبني ملف SSH_4DAY🇫🇷.dark مشفّر
+    ✅ يبني ملف SSH_4DAY🇫🇷.dark مقفول (Locked)
+    - نفس بنية التطبيق الرسمية
+    - المعلومات مخفية فـ encryptedLockedConfig
     - Port: 22 ثابت
-    - اسم: SSH_4DAY🇫🇷
     """
     try:
         config = {
             "type": "SSH",
             "name": "SSH_4DAY🇫🇷",
             "sshTunnelConfig": {
-                "sshConfig": {
-                    "host": host.strip(),
-                    "port": 22,
-                    "username": username.strip(),
-                    "password": password.strip()
-                },
                 "injectConfig": {
-                    "mode": "PROXY",
-                    "proxyHost": "34.43.46.91",
-                    "proxyPort": 443,
-                    "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
+                    "enabled": True,
+                    "mode": "PROXY"
+                }
+            },
+            "encryptedLockedConfig": {
+                "LockedAppConfig": {
+                    "VersionCode": 32,
+                    "VersionName": "1.0.26",
+                    "Message": "APP_/DARK TUNEEL📱\n\nتفاعل مطلوب _50💖\n\nINTERNET SPEED🌐\n\nيدعم العاب ايضا🕹🧩\n+سناب 🌏ومجاني 🥳 في تعليقات",
+                    "ConnectedMessage": "بصحتك🤍_يدعم العاب 🇧🇪_ارجع تفاعل🥳❤️",
+                    "ExpiredAtTimestamp": 0,
+                    "HardwareIdList": [],
+                    "TunnelType": "SSH",
+                    "IsSshLocked": True
+                },
+                "EncryptedLockedConfig": {
+                    "InjectConfig": {
+                        "IsEncrypted": True,
+                        "EncryptedMode": "PROXY",
+                        "EncryptedProxyHost": "34.43.46.91",
+                        "EncryptedProxyPort": "443",
+                        "EncryptedServerNameIndication": [],
+                        "EncryptedPayload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
+                        "EncryptedDnsttDnsHost": "1.1.1.1",
+                        "EncryptedDnsttDnsPort": "53",
+                        "EncryptedDnsttServerName": [],
+                        "EncryptedDnsttPubkey": []
+                    },
+                    "SshConfig": {
+                        "IsEncrypted": True,
+                        "IsLocked": True,
+                        "EncryptedHost": host.strip(),
+                        "EncryptedPort": "22",
+                        "EncryptedUsername": username.strip(),
+                        "EncryptedPassword": password.strip()
+                    },
+                    "V2RayConfig": {
+                        "IsEncrypted": True,
+                        "IsInjectModeEnabled": False,
+                        "EncryptedConfig": []
+                    }
                 }
             }
         }
@@ -654,7 +681,7 @@ async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ بناء ملف dark المشفر
+        # ✅ بناء ملف dark المشفر + Locked
         new_uri = build_ssh_dark_encrypted(host, username, password)
         if not new_uri:
             await msg.edit_text("❌ فشل بناء ملف dark.")
