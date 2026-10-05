@@ -297,7 +297,7 @@ class VMESS:
                         "mode": "PROXY",
                         "proxyHost": "34.43.46.91",
                         "proxyPort": 443,
-                        "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
+                        "payload": "CONNECT [host_port] HTTP/1.1[crlf]Host: youtubekids.com[crlf]X-Online-Host: youtubekids.com[crlf]Connection: Keep-Alive[crlf]User-Agent: Mozilla/5.0[crlf][crlf]",
                     },
                 },
             }
