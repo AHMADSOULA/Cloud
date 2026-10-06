@@ -4,7 +4,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 def main_menu(is_admin: bool = False):
     rows = [
         [InlineKeyboardButton("📊 حالتي", callback_data="status")],
+        [InlineKeyboardButton("🔐 SSH WebSocket", callback_data="ssh_ws")],
         [InlineKeyboardButton("🌐 VMESS", callback_data="vmess")],
+        [InlineKeyboardButton("⚡ VLESS", callback_data="vless")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton("⚙️ ADMIN", callback_data="admin")])
@@ -28,9 +30,29 @@ def admin_menu():
     ])
 
 
-def ssh_countries_menu(countries: list):
+def ssh_types_menu():
+    """أزرار أنواع SSH"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎬 YOUTUBE 4DAY", callback_data="ssh_create:youtube")],
+        [InlineKeyboardButton("👻 SNAPCHAT 4DAY", callback_data="ssh_create:snapchat")],
+        [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
+    ])
+
+
+def countries_menu(kind: str, countries: list):
+    """أزرار الدول - kind يحدد نوع"""
     rows = []
-    for i, c in enumerate(countries[:60]):
-        rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
+    for idx, c in enumerate(countries):
+        rows.append([
+            InlineKeyboardButton(
+                f"{c['flag']} {c['name']}",
+                callback_data=f"{kind}_country:{idx}"
+            )
+        ])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
+
+
+def ssh_countries_menu(countries: list):
+    """متوافق مع القديم"""
+    return countries_menu("ssh", countries)
