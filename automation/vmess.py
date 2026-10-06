@@ -1,54 +1,24 @@
 """
 automation/vmess.py
-- يستورد من sshs8.py
+- build_ssh_dark / build_vmess_dark / build_vless_dark
 """
-from automation.sshs8 import (
-    SSHS8,
-    SSH_COUNTRIES,
-    VMESS_COUNTRIES,
-    VLESS_COUNTRIES,
-    SNAPCHAT_TEMPLATE_URI,
-    YOUTUBE_TEMPLATE_URI,
-    _b64_pad,
-)
 import base64
 import json
+from automation.sshs8 import _b64_pad, PAYLOADS
 from utils.logger import get_logger
 
 log = get_logger("VMESS")
 
 
-def modify_ssh_template(template_uri: str, new_host: str, new_username: str, new_password: str) -> str:
-    """يعدل قالب SSH — يغير host/username/password"""
+def build_ssh_dark(host: str, username: str, password: str, kind: str = "youtube") -> str:
+    """يبني ملف SSH dark — payload حسب النوع"""
     try:
-        raw_b64 = template_uri.split("darktunnel://", 1)[1].strip()
-        raw_b64 = _b64_pad(raw_b64)
-        decoded = base64.b64decode(raw_b64.encode("utf-8")).decode("utf-8")
-        data = json.loads(decoded)
-
-        ssh_config = data.get("sshTunnelConfig", {}).get("sshConfig", {})
-        ssh_config["host"] = new_host or ""
-        ssh_config["username"] = new_username or ""
-        ssh_config["password"] = new_password or ""
-
-        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        b64 = base64.b64encode(raw).decode("utf-8")
-        return "darktunnel://" + b64
-
-    except Exception as e:
-        log.error(f"❌ modify_ssh_template: {e}", exc_info=True)
-        return None
-
-
-def build_ssh_dark(host: str, username: str, password: str, payload: str = None, name: str = "SSH") -> str:
-    """يبني ملف SSH dark"""
-    try:
-        if not payload:
-            payload = "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]"
+        # ✅ نجيبو الإعدادات حسب النوع
+        cfg = PAYLOADS.get(kind, PAYLOADS["youtube"])
 
         outer = {
             "type": "SSH",
-            "name": name,
+            "name": "SSH",
             "sshTunnelConfig": {
                 "sshConfig": {
                     "host": host or "",
@@ -60,7 +30,7 @@ def build_ssh_dark(host: str, username: str, password: str, payload: str = None,
                     "mode": "PROXY",
                     "proxyHost": "34.43.46.91",
                     "proxyPort": 443,
-                    "payload": payload,
+                    "payload": cfg["payload"],
                 },
             },
         }
@@ -74,23 +44,16 @@ def build_ssh_dark(host: str, username: str, password: str, payload: str = None,
         return None
 
 
-def build_vmess_dark(vmess_data: dict, password: str) -> str:
-    """يبني ملف VMESS dark"""
+def build_vmess_dark(vmess_data: dict, password: str, kind: str = "youtube") -> str:
+    """يبني ملف VMESS dark — payload + sni + wsHeaderHost حسب النوع"""
     try:
+        # ✅ نجيبو الإعدادات حسب النوع
+        cfg = PAYLOADS.get(kind, PAYLOADS["youtube"])
+
         host = vmess_data.get("add") or vmess_data.get("host") or ""
         port = int(vmess_data.get("port") or 443)
         uuid = vmess_data.get("id") or ""
-        sni = vmess_data.get("sni") or vmess_data.get("host") or "youtube.com"
         path = vmess_data.get("path") or "/vmess/"
-        ws_header_host = vmess_data.get("host") or "googlevideo.com"
-
-        NEW_PAYLOAD = (
-            "CONNECT [host_port] HTTP/1.1[crlf]"
-            "Host: youtubekids.com[crlf]"
-            "X-Online-Host: youtubekids.com[crlf]"
-            "Connection: Keep-Alive[crlf]"
-            "User-Agent: Mozilla/5.0[crlf][crlf]"
-        )
 
         outer = {
             "type": "VMESS",
@@ -100,16 +63,16 @@ def build_vmess_dark(vmess_data: dict, password: str) -> str:
                     "host": host,
                     "port": port,
                     "uuid": uuid,
-                    "serverNameIndication": sni,
+                    "serverNameIndication": cfg["sni"],           # ✅ حسب النوع
                     "wsPath": path,
-                    "wsHeaderHost": ws_header_host,
+                    "wsHeaderHost": cfg["ws_header_host"],         # ✅ حسب النوع
                 },
                 "injectConfig": {
                     "enabled": True,
                     "mode": "PROXY",
                     "proxyHost": "34.43.46.91",
                     "proxyPort": 443,
-                    "payload": NEW_PAYLOAD,
+                    "payload": cfg["payload"],                      # ✅ حسب النوع
                 },
             },
         }
@@ -123,23 +86,16 @@ def build_vmess_dark(vmess_data: dict, password: str) -> str:
         return None
 
 
-def build_vless_dark(vless_data: dict, password: str) -> str:
-    """يبني ملف VLESS dark"""
+def build_vless_dark(vless_data: dict, password: str, kind: str = "youtube") -> str:
+    """يبني ملف VLESS dark — payload + sni + wsHeaderHost حسب النوع"""
     try:
+        # ✅ نجيبو الإعدادات حسب النوع
+        cfg = PAYLOADS.get(kind, PAYLOADS["youtube"])
+
         host = vless_data.get("add") or vless_data.get("host") or ""
         port = int(vless_data.get("port") or 443)
         uuid = vless_data.get("id") or ""
-        sni = vless_data.get("sni") or vless_data.get("host") or "youtube.com"
         path = vless_data.get("path") or "/vless/"
-        ws_header_host = vless_data.get("host") or "googlevideo.com"
-
-        NEW_PAYLOAD = (
-            "CONNECT [host_port] HTTP/1.1[crlf]"
-            "Host: youtubekids.com[crlf]"
-            "X-Online-Host: youtubekids.com[crlf]"
-            "Connection: Keep-Alive[crlf]"
-            "User-Agent: Mozilla/5.0[crlf][crlf]"
-        )
 
         outer = {
             "type": "VLESS",
@@ -149,16 +105,16 @@ def build_vless_dark(vless_data: dict, password: str) -> str:
                     "host": host,
                     "port": port,
                     "uuid": uuid,
-                    "serverNameIndication": sni,
+                    "serverNameIndication": cfg["sni"],           # ✅ حسب النوع
                     "wsPath": path,
-                    "wsHeaderHost": ws_header_host,
+                    "wsHeaderHost": cfg["ws_header_host"],         # ✅ حسب النوع
                 },
                 "injectConfig": {
                     "enabled": True,
                     "mode": "PROXY",
                     "proxyHost": "34.43.46.91",
                     "proxyPort": 443,
-                    "payload": NEW_PAYLOAD,
+                    "payload": cfg["payload"],                      # ✅ حسب النوع
                 },
             },
         }
