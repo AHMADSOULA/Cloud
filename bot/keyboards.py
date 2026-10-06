@@ -30,17 +30,16 @@ def admin_menu():
     ])
 
 
-def ssh_types_menu():
-    """أزرار أنواع SSH"""
+def payload_types_menu(prefix: str):
+    """أزرار نوع الـ payload — youtube ولا snapchat"""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎬 YOUTUBE 4DAY", callback_data="ssh_create:youtube")],
-        [InlineKeyboardButton("👻 SNAPCHAT 4DAY", callback_data="ssh_create:snapchat")],
-        [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
+        [InlineKeyboardButton("🎬 YOUTUBE", callback_data=f"{prefix}_payload:youtube")],
+        [InlineKeyboardButton("👻 SNAPCHAT", callback_data=f"{prefix}_payload:snapchat")],
     ])
 
 
 def countries_menu(kind: str, countries: list):
-    """أزرار الدول - kind يحدد نوع"""
+    """أزرار الدول"""
     rows = []
     for idx, c in enumerate(countries):
         rows.append([
@@ -51,8 +50,3 @@ def countries_menu(kind: str, countries: list):
         ])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
-
-
-def ssh_countries_menu(countries: list):
-    """متوافق مع القديم"""
-    return countries_menu("ssh", countries)
