@@ -30,16 +30,7 @@ def admin_menu():
     ])
 
 
-def payload_types_menu(prefix: str):
-    """أزرار نوع الـ payload — youtube ولا snapchat"""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎬 YOUTUBE", callback_data=f"{prefix}_payload:youtube")],
-        [InlineKeyboardButton("👻 SNAPCHAT", callback_data=f"{prefix}_payload:snapchat")],
-    ])
-
-
 def countries_menu(kind: str, countries: list):
-    """أزرار الدول"""
     rows = []
     for idx, c in enumerate(countries):
         rows.append([
