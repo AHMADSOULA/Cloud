@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
-- يدعم SSH / VLESS / VMESS
-- قائمة دول مع URLs
+- يدعم SSH / VMESS / VLESS
+- قائمة دول مع URLs + PAYLOADS
 """
 import asyncio
 import random
@@ -20,26 +20,10 @@ log = get_logger("SSHS8")
 # ═══════════════════════════════════════════
 
 SSH_COUNTRIES = [
-    {
-        "name": "France",
-        "flag": "🇫🇷",
-        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113",
-    },
-    {
-        "name": "Germany",
-        "flag": "🇩🇪",
-        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/105",
-    },
-    {
-        "name": "Netherlands",
-        "flag": "🇳🇱",
-        "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/236",
-    },
-    {
-        "name": "USA",
-        "flag": "🇺🇸",
-        "url": "https://vpnnamerica.sshs8.com/accounts/SSH_WEBSOCKET/58",
-    },
+    {"name": "France", "flag": "🇫🇷", "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113"},
+    {"name": "Germany", "flag": "🇩🇪", "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/105"},
+    {"name": "Netherlands", "flag": "🇳🇱", "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/236"},
+    {"name": "USA", "flag": "🇺🇸", "url": "https://vpnnamerica.sshs8.com/accounts/SSH_WEBSOCKET/58"},
 ]
 
 
@@ -48,36 +32,12 @@ SSH_COUNTRIES = [
 # ═══════════════════════════════════════════
 
 VMESS_COUNTRIES = [
-    {
-        "name": "France",
-        "flag": "🇫🇷",
-        "url": "https://vpneurope.sshs8.com/accounts/VMESS/115",
-    },
-    {
-        "name": "USA",
-        "flag": "🇺🇸",
-        "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/52",
-    },
-    {
-        "name": "Mexico",
-        "flag": "🇲🇽",
-        "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/3",
-    },
-    {
-        "name": "Netherlands",
-        "flag": "🇳🇱",
-        "url": "https://vpneurope.sshs8.com/accounts/VMESS/247",
-    },
-    {
-        "name": "Germany",
-        "flag": "🇩🇪",
-        "url": "https://vpneurope.sshs8.com/accounts/VMESS/107",
-    },
-    {
-        "name": "Italy",
-        "flag": "🇮🇹",
-        "url": "https://vpneurope.sshs8.com/accounts/VMESS/214",
-    },
+    {"name": "France", "flag": "🇫🇷", "url": "https://vpneurope.sshs8.com/accounts/VMESS/115"},
+    {"name": "USA", "flag": "🇺🇸", "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/52"},
+    {"name": "Mexico", "flag": "🇲🇽", "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/3"},
+    {"name": "Netherlands", "flag": "🇳🇱", "url": "https://vpneurope.sshs8.com/accounts/VMESS/247"},
+    {"name": "Germany", "flag": "🇩🇪", "url": "https://vpneurope.sshs8.com/accounts/VMESS/107"},
+    {"name": "Italy", "flag": "🇮🇹", "url": "https://vpneurope.sshs8.com/accounts/VMESS/214"},
 ]
 
 
@@ -86,36 +46,29 @@ VMESS_COUNTRIES = [
 # ═══════════════════════════════════════════
 
 VLESS_COUNTRIES = [
-    {
-        "name": "France",
-        "flag": "🇫🇷",
-        "url": "https://vpneurope.sshs8.com/accounts/VLESS/113",
-    },
-    {
-        "name": "Germany",
-        "flag": "🇩🇪",
-        "url": "https://vpneurope.sshs8.com/accounts/VLESS/105",
-    },
-    {
-        "name": "Netherlands",
-        "flag": "🇳🇱",
-        "url": "https://vpneurope.sshs8.com/accounts/VLESS/236",
-    },
-    {
-        "name": "USA",
-        "flag": "🇺🇸",
-        "url": "https://vpnnamerica.sshs8.com/accounts/VLESS/58",
-    },
+    {"name": "France", "flag": "🇫🇷", "url": "https://vpneurope.sshs8.com/accounts/VLESS/113"},
+    {"name": "Germany", "flag": "🇩🇪", "url": "https://vpneurope.sshs8.com/accounts/VLESS/105"},
+    {"name": "Netherlands", "flag": "🇳🇱", "url": "https://vpneurope.sshs8.com/accounts/VLESS/236"},
+    {"name": "USA", "flag": "🇺🇸", "url": "https://vpnnamerica.sshs8.com/accounts/VLESS/58"},
 ]
 
 
 # ═══════════════════════════════════════════
-# قوالب SSH (قوالب ثابتة)
+# Payloads
 # ═══════════════════════════════════════════
 
-SNAPCHAT_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE1Mi4yMjguMTYyLjE5IiwidXNlcm5hbWUiOiJ1MzY0NTQ4MjAzMCIsInBhc3N3b3JkIjoibUQxaHo3UHdrViJ9LCJpbmplY3RDb25maWciOnsibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMzQuNDMuNDYuOTEiLCJwcm94eVBvcnQiOjQ0MywicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RfcG9ydF0gW3Byb3RvY29sXVtjcmxmXUhvc3Q6IGFwaS5zbmFwY2hhdC5jb21bY3JsZl1bY3JsZl0ifX19"
-
-YOUTUBE_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
+PAYLOADS = {
+    "youtube": {
+        "sni": "youtube.com",
+        "ws_header_host": "googlevideo.com",
+        "payload": "CONNECT [host_port] [protocol][crlf]Host: youtube.com[crlf][crlf]",
+    },
+    "snapchat": {
+        "sni": "api.snapchat.com",
+        "ws_header_host": "api.snapchat.com",
+        "payload": "CONNECT [host_port] [protocol][crlf]Host: api.snapchat.com[crlf][crlf]",
+    },
+}
 
 
 def _b64_pad(s: str) -> str:
@@ -144,10 +97,6 @@ class SSHS8:
     def set_chat(self, chat_id):
         self.chat_id = chat_id
 
-    # ═══════════════════════════════════════
-    # فتح صفحة
-    # ═══════════════════════════════════════
-
     async def open_page(self, url: str) -> bool:
         log.info(f"🌐 فتح: {url}")
         self.page = await self.context.new_page()
@@ -162,7 +111,7 @@ class SSHS8:
             return False
 
     # ═══════════════════════════════════════
-    # إنشاء حساب SSH
+    # SSH
     # ═══════════════════════════════════════
 
     async def create_ssh_account(self) -> dict:
@@ -182,8 +131,6 @@ class SSHS8:
         }
 
         try:
-            # تعبئة Password
-            filled = False
             for sel in [
                 'input[type="password"]',
                 'input[name*="pass" i]',
@@ -198,7 +145,6 @@ class SSHS8:
                         await el.fill("")
                         await page.wait_for_timeout(100)
                         await el.fill(password_input_value)
-                        filled = True
                         break
                 except Exception:
                     continue
@@ -206,7 +152,6 @@ class SSHS8:
             await page.wait_for_timeout(500)
             url_before = page.url
 
-            # ضغط Create
             clicked = False
             for sel in [
                 'button:has-text("Create an account")',
@@ -246,7 +191,6 @@ class SSHS8:
                 result["message"] = "❌ ما لقيناش زر Create"
                 return result
 
-            # نستناو URL يتبدل
             for i in range(20):
                 await page.wait_for_timeout(500)
                 if page.url != url_before:
@@ -254,7 +198,6 @@ class SSHS8:
 
             await page.wait_for_timeout(2000)
 
-            # استخراج
             creds = await self._extract_ssh_creds(page)
             result["host"] = creds.get("host")
             result["username"] = creds.get("username")
@@ -276,7 +219,7 @@ class SSHS8:
         return result
 
     # ═══════════════════════════════════════
-    # إنشاء حساب VMESS / VLESS
+    # VMESS / VLESS
     # ═══════════════════════════════════════
 
     async def create_vmess_account(self) -> dict:
@@ -295,7 +238,6 @@ class SSHS8:
         }
 
         try:
-            # تعبئة Password
             for sel in [
                 'input[type="password"]',
                 'input[name*="pass" i]',
@@ -317,7 +259,6 @@ class SSHS8:
             await page.wait_for_timeout(500)
             url_before = page.url
 
-            # ضغط Create
             clicked = False
             for sel in [
                 'button:has-text("Create an account")',
@@ -357,7 +298,6 @@ class SSHS8:
                 result["message"] = "❌ ما لقيناش زر Create"
                 return result
 
-            # نستناو URL يتبدل
             for i in range(20):
                 await page.wait_for_timeout(500)
                 if page.url != url_before:
@@ -365,7 +305,6 @@ class SSHS8:
 
             await page.wait_for_timeout(3000)
 
-            # Link TLS
             link_tls = await self._extract_link_tls(page)
             if not link_tls:
                 result["message"] = "❌ ما لقيناش Link TLS."
@@ -373,7 +312,6 @@ class SSHS8:
 
             result["link_tls"] = link_tls
 
-            # نفكو base64
             vmess_data = self._decode_vmess_link(link_tls)
             if not vmess_data:
                 result["message"] = "❌ ما قدرناش نفكو Link TLS."
@@ -386,10 +324,6 @@ class SSHS8:
             log.error(f"❌ create_vmess_account: {e}", exc_info=True)
 
         return result
-
-    # ═══════════════════════════════════════
-    # استخراج معلومات SSH
-    # ═══════════════════════════════════════
 
     async def _extract_ssh_creds(self, page) -> dict:
         result = {"host": None, "domain": None, "username": None, "password": None}
@@ -412,7 +346,6 @@ class SSHS8:
                         if (!val) continue;
                         if (val.toLowerCase() === 'copy') continue;
                         if (val.length < 2) continue;
-                        
                         out.all_values.push({ value: val });
                     }
                     
@@ -480,10 +413,6 @@ class SSHS8:
             await page.wait_for_timeout(2000)
 
         return result
-
-    # ═══════════════════════════════════════
-    # استخراج Link TLS (VMESS / VLESS)
-    # ═══════════════════════════════════════
 
     async def _extract_link_tls(self, page) -> str:
         for attempt in range(30):
@@ -553,17 +482,11 @@ class SSHS8:
 
         return None
 
-    # ═══════════════════════════════════════
-    # فك base64
-    # ═══════════════════════════════════════
-
     def _decode_vmess_link(self, link: str) -> dict:
         try:
-            # vmess://
             if link.startswith("vmess://"):
                 b64 = link.replace("vmess://", "").strip()
             elif link.startswith("vless://"):
-                # VLESS كيبدا بـ vless:// — كنستخرجو الـ UUID من query
                 return self._parse_vless_link(link)
             else:
                 b64 = link.strip()
@@ -586,14 +509,10 @@ class SSHS8:
             return None
 
     def _parse_vless_link(self, link: str) -> dict:
-        """يفك vless:// link"""
         try:
             from urllib.parse import urlparse, parse_qs, unquote
-
-            # vless://uuid@host:port?params#name
             u = link.replace("vless://", "")
             parsed = urlparse("vless://" + u)
-
             uuid = parsed.username or parsed.netloc.split("@")[0] if "@" in parsed.netloc else ""
             host = parsed.hostname or ""
             port = parsed.port or 443
