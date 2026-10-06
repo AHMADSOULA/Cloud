@@ -1,19 +1,19 @@
 """
 automation/vmess.py
 - build_ssh_dark / build_vmess_dark / build_vless_dark
+- kind: youtube / snapchat فقط
 """
 import base64
 import json
-from automation.sshs8 import _b64_pad, PAYLOADS
+from automation.sshs8 import PAYLOADS
 from utils.logger import get_logger
 
 log = get_logger("VMESS")
 
 
 def build_ssh_dark(host: str, username: str, password: str, kind: str = "youtube") -> str:
-    """يبني ملف SSH dark — payload حسب النوع"""
+    """يبني ملف SSH dark حسب النوع (youtube / snapchat)"""
     try:
-        # ✅ نجيبو الإعدادات حسب النوع
         cfg = PAYLOADS.get(kind, PAYLOADS["youtube"])
 
         outer = {
@@ -45,9 +45,8 @@ def build_ssh_dark(host: str, username: str, password: str, kind: str = "youtube
 
 
 def build_vmess_dark(vmess_data: dict, password: str, kind: str = "youtube") -> str:
-    """يبني ملف VMESS dark — payload + sni + wsHeaderHost حسب النوع"""
+    """يبني ملف VMESS dark حسب النوع"""
     try:
-        # ✅ نجيبو الإعدادات حسب النوع
         cfg = PAYLOADS.get(kind, PAYLOADS["youtube"])
 
         host = vmess_data.get("add") or vmess_data.get("host") or ""
@@ -63,16 +62,16 @@ def build_vmess_dark(vmess_data: dict, password: str, kind: str = "youtube") -> 
                     "host": host,
                     "port": port,
                     "uuid": uuid,
-                    "serverNameIndication": cfg["sni"],           # ✅ حسب النوع
+                    "serverNameIndication": cfg["sni"],
                     "wsPath": path,
-                    "wsHeaderHost": cfg["ws_header_host"],         # ✅ حسب النوع
+                    "wsHeaderHost": cfg["ws_header_host"],
                 },
                 "injectConfig": {
                     "enabled": True,
                     "mode": "PROXY",
                     "proxyHost": "34.43.46.91",
                     "proxyPort": 443,
-                    "payload": cfg["payload"],                      # ✅ حسب النوع
+                    "payload": cfg["payload"],
                 },
             },
         }
@@ -87,9 +86,8 @@ def build_vmess_dark(vmess_data: dict, password: str, kind: str = "youtube") -> 
 
 
 def build_vless_dark(vless_data: dict, password: str, kind: str = "youtube") -> str:
-    """يبني ملف VLESS dark — payload + sni + wsHeaderHost حسب النوع"""
+    """يبني ملف VLESS dark حسب النوع"""
     try:
-        # ✅ نجيبو الإعدادات حسب النوع
         cfg = PAYLOADS.get(kind, PAYLOADS["youtube"])
 
         host = vless_data.get("add") or vless_data.get("host") or ""
@@ -105,16 +103,16 @@ def build_vless_dark(vless_data: dict, password: str, kind: str = "youtube") -> 
                     "host": host,
                     "port": port,
                     "uuid": uuid,
-                    "serverNameIndication": cfg["sni"],           # ✅ حسب النوع
+                    "serverNameIndication": cfg["sni"],
                     "wsPath": path,
-                    "wsHeaderHost": cfg["ws_header_host"],         # ✅ حسب النوع
+                    "wsHeaderHost": cfg["ws_header_host"],
                 },
                 "injectConfig": {
                     "enabled": True,
                     "mode": "PROXY",
                     "proxyHost": "34.43.46.91",
                     "proxyPort": 443,
-                    "payload": cfg["payload"],                      # ✅ حسب النوع
+                    "payload": cfg["payload"],
                 },
             },
         }
