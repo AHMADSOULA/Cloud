@@ -1,23 +1,25 @@
 """
 automation/sshs8.py
-- يدعم URLs متعددة (دول مختلفة)
-- سريع بلا صور
+- يدعم SSH / VLESS / VMESS
+- قائمة دول مع URLs
 """
 import asyncio
 import random
 import string
 import re
 import os
+import base64
+import json
 from utils.logger import get_logger
 
 log = get_logger("SSHS8")
 
 
 # ═══════════════════════════════════════════
-# قائمة الدول مع URLs
+# الدول - SSH
 # ═══════════════════════════════════════════
 
-COUNTRIES = [
+SSH_COUNTRIES = [
     {
         "name": "France",
         "flag": "🇫🇷",
@@ -41,17 +43,94 @@ COUNTRIES = [
 ]
 
 
-def get_country_by_index(idx: int) -> dict:
-    """يرجع الدولة حسب الـ index"""
-    if 0 <= idx < len(COUNTRIES):
-        return COUNTRIES[idx]
-    return COUNTRIES[0]
+# ═══════════════════════════════════════════
+# الدول - VMESS
+# ═══════════════════════════════════════════
+
+VMESS_COUNTRIES = [
+    {
+        "name": "France",
+        "flag": "🇫🇷",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/115",
+    },
+    {
+        "name": "USA",
+        "flag": "🇺🇸",
+        "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/52",
+    },
+    {
+        "name": "Mexico",
+        "flag": "🇲🇽",
+        "url": "https://vpnnamerica.sshs8.com/accounts/VMESS/3",
+    },
+    {
+        "name": "Netherlands",
+        "flag": "🇳🇱",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/247",
+    },
+    {
+        "name": "Germany",
+        "flag": "🇩🇪",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/107",
+    },
+    {
+        "name": "Italy",
+        "flag": "🇮🇹",
+        "url": "https://vpneurope.sshs8.com/accounts/VMESS/214",
+    },
+]
+
+
+# ═══════════════════════════════════════════
+# الدول - VLESS
+# ═══════════════════════════════════════════
+
+VLESS_COUNTRIES = [
+    {
+        "name": "France",
+        "flag": "🇫🇷",
+        "url": "https://vpneurope.sshs8.com/accounts/VLESS/113",
+    },
+    {
+        "name": "Germany",
+        "flag": "🇩🇪",
+        "url": "https://vpneurope.sshs8.com/accounts/VLESS/105",
+    },
+    {
+        "name": "Netherlands",
+        "flag": "🇳🇱",
+        "url": "https://vpneurope.sshs8.com/accounts/VLESS/236",
+    },
+    {
+        "name": "USA",
+        "flag": "🇺🇸",
+        "url": "https://vpnnamerica.sshs8.com/accounts/VLESS/58",
+    },
+]
+
+
+# ═══════════════════════════════════════════
+# قوالب SSH (قوالب ثابتة)
+# ═══════════════════════════════════════════
+
+SNAPCHAT_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE1Mi4yMjguMTYyLjE5IiwidXNlcm5hbWUiOiJ1MzY0NTQ4MjAzMCIsInBhc3N3b3JkIjoibUQxaHo3UHdrViJ9LCJpbmplY3RDb25maWciOnsibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMzQuNDMuNDYuOTEiLCJwcm94eVBvcnQiOjQ0MywicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RfcG9ydF0gW3Byb3RvY29sXVtjcmxmXUhvc3Q6IGFwaS5zbmFwY2hhdC5jb21bY3JsZl1bY3JsZl0ifX19"
+
+YOUTUBE_TEMPLATE_URI = "darktunnel://eyJ0eXBlIjoiU1NIIiwibmFtZSI6IlNTSCIsInNzaFR1bm5lbENvbmZpZyI6eyJzc2hDb25maWciOnsiaG9zdCI6IjE2MC4xMTkuMjUxLjE1IiwidXNlcm5hbWUiOiJ1NTU2NjI3MTg5OCIsInBhc3N3b3JkIjoiQWhtZWQyMDI1In0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIzNC40My40Ni45MSIsInByb3h5UG9ydCI6NDQzLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF9wb3J0XSBbcHJvdG9jb2xdW2NybGZdSG9zdDogeW91dHViZS5jb21bY3JsZl1bY3JsZl0ifX19"
+
+
+def _b64_pad(s: str) -> str:
+    s = s.strip()
+    return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
 
 
 def generate_password():
     chars = string.ascii_letters + string.digits
     return "".join(random.choices(chars, k=10))
 
+
+# ═══════════════════════════════════════════
+# الكلاس الرئيسي
+# ═══════════════════════════════════════════
 
 class SSHS8:
     def __init__(self, context, sender=None, user_tag="@user"):
@@ -66,11 +145,10 @@ class SSHS8:
         self.chat_id = chat_id
 
     # ═══════════════════════════════════════
-    # 1. فتح صفحة (URL مخصص)
+    # فتح صفحة
     # ═══════════════════════════════════════
 
     async def open_page(self, url: str) -> bool:
-        """يفتح صفحة مخصصة"""
         log.info(f"🌐 فتح: {url}")
         self.page = await self.context.new_page()
         page = self.page
@@ -83,15 +161,11 @@ class SSHS8:
             log.error(f"❌ open_page: {e}", exc_info=True)
             return False
 
-    async def open_france_page(self) -> bool:
-        """متوافق مع القديم — فرنسا"""
-        return await self.open_page("https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113")
-
     # ═══════════════════════════════════════
-    # 2. تعبئة Password + Create
+    # إنشاء حساب SSH
     # ═══════════════════════════════════════
 
-    async def create_account(self, country_url: str = None) -> dict:
+    async def create_ssh_account(self) -> dict:
         page = self.page
         if not page:
             return {"success": False, "error": "no_page"}
@@ -108,13 +182,12 @@ class SSHS8:
         }
 
         try:
-            # ✅ 1. نعبيو Password
+            # تعبئة Password
             filled = False
             for sel in [
                 'input[type="password"]',
                 'input[name*="pass" i]',
                 'input[id*="pass" i]',
-                'input[placeholder*="pass" i]',
             ]:
                 try:
                     el = page.locator(sel).first
@@ -125,19 +198,15 @@ class SSHS8:
                         await el.fill("")
                         await page.wait_for_timeout(100)
                         await el.fill(password_input_value)
-                        log.info(f"✅ password filled: {password_input_value}")
                         filled = True
                         break
                 except Exception:
                     continue
 
-            if not filled:
-                log.warning("⚠️ ما لقيناش حقل Password")
-
             await page.wait_for_timeout(500)
             url_before = page.url
 
-            # ✅ 2. نضغطو Create
+            # ضغط Create
             clicked = False
             for sel in [
                 'button:has-text("Create an account")',
@@ -153,7 +222,6 @@ class SSHS8:
                         await page.wait_for_timeout(150)
                         await el.click(timeout=5000)
                         clicked = True
-                        log.info(f"✅ Clicked via {sel}")
                         break
                 except Exception:
                     continue
@@ -173,32 +241,25 @@ class SSHS8:
                 """)
                 if js_clicked:
                     clicked = True
-                    log.info(f"✅ JS Clicked: {js_clicked}")
-
-            log.info(f"🎯 Create clicked: {clicked}")
 
             if not clicked:
                 result["message"] = "❌ ما لقيناش زر Create"
                 return result
 
-            # ✅ 3. نستناو URL يتبدل
+            # نستناو URL يتبدل
             for i in range(20):
                 await page.wait_for_timeout(500)
                 if page.url != url_before:
-                    log.info(f"✅ URL تبدل بعد {(i+1)*0.5}s")
                     break
 
             await page.wait_for_timeout(2000)
 
-            # ✅ 4. استخراج المعلومات
-            creds = await self._extract_by_order(page)
-
+            # استخراج
+            creds = await self._extract_ssh_creds(page)
             result["host"] = creds.get("host")
             result["username"] = creds.get("username")
             result["password"] = creds.get("password") or password_input_value
             result["domain"] = creds.get("domain")
-
-            log.info(f"🔍 نهائي: host={result['host']} user={result['username']} pass={result['password']}")
 
             if not result["host"]:
                 result["message"] = "❌ ما لقيناش IPv4."
@@ -206,22 +267,131 @@ class SSHS8:
             if not result["username"]:
                 result["message"] = "❌ ما لقيناش Username."
                 return result
-            if not result["password"] or result["password"] == "Copy":
-                result["message"] = "❌ ما لقيناش Password."
-                return result
 
             result["success"] = True
 
         except Exception as e:
-            log.error(f"❌ create_account: {e}", exc_info=True)
+            log.error(f"❌ create_ssh_account: {e}", exc_info=True)
 
         return result
 
     # ═══════════════════════════════════════
-    # 3. استخراج المعلومات
+    # إنشاء حساب VMESS / VLESS
     # ═══════════════════════════════════════
 
-    async def _extract_by_order(self, page) -> dict:
+    async def create_vmess_account(self) -> dict:
+        page = self.page
+        if not page:
+            return {"success": False, "error": "no_page"}
+
+        password_value = generate_password()
+
+        result = {
+            "success": False,
+            "password": password_value,
+            "link_tls": None,
+            "vmess_config": None,
+            "message": None,
+        }
+
+        try:
+            # تعبئة Password
+            for sel in [
+                'input[type="password"]',
+                'input[name*="pass" i]',
+                'input[id*="pass" i]',
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0 and await el.is_visible():
+                        await el.scroll_into_view_if_needed()
+                        await el.click()
+                        await page.wait_for_timeout(100)
+                        await el.fill("")
+                        await page.wait_for_timeout(100)
+                        await el.fill(password_value)
+                        break
+                except Exception:
+                    continue
+
+            await page.wait_for_timeout(500)
+            url_before = page.url
+
+            # ضغط Create
+            clicked = False
+            for sel in [
+                'button:has-text("Create an account")',
+                'button:has-text("Create account")',
+                'input[value="Create an account"]',
+                'input[type="submit"]',
+                'button:has-text("Create")',
+            ]:
+                try:
+                    el = page.locator(sel).first
+                    if await el.count() > 0 and await el.is_visible():
+                        await el.scroll_into_view_if_needed()
+                        await page.wait_for_timeout(150)
+                        await el.click(timeout=5000)
+                        clicked = True
+                        break
+                except Exception:
+                    continue
+
+            if not clicked:
+                js_clicked = await page.evaluate("""
+                    () => {
+                        for (const el of document.querySelectorAll('button, input[type="submit"], a, [role="button"]')) {
+                            if (el.offsetParent === null || el.disabled) continue;
+                            const t = (el.innerText || el.value || el.textContent || '').trim().toLowerCase();
+                            if (t.includes('create')) {
+                                try { el.click(); return t; } catch(e) {}
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                if js_clicked:
+                    clicked = True
+
+            if not clicked:
+                result["message"] = "❌ ما لقيناش زر Create"
+                return result
+
+            # نستناو URL يتبدل
+            for i in range(20):
+                await page.wait_for_timeout(500)
+                if page.url != url_before:
+                    break
+
+            await page.wait_for_timeout(3000)
+
+            # Link TLS
+            link_tls = await self._extract_link_tls(page)
+            if not link_tls:
+                result["message"] = "❌ ما لقيناش Link TLS."
+                return result
+
+            result["link_tls"] = link_tls
+
+            # نفكو base64
+            vmess_data = self._decode_vmess_link(link_tls)
+            if not vmess_data:
+                result["message"] = "❌ ما قدرناش نفكو Link TLS."
+                return result
+
+            result["vmess_config"] = vmess_data
+            result["success"] = True
+
+        except Exception as e:
+            log.error(f"❌ create_vmess_account: {e}", exc_info=True)
+
+        return result
+
+    # ═══════════════════════════════════════
+    # استخراج معلومات SSH
+    # ═══════════════════════════════════════
+
+    async def _extract_ssh_creds(self, page) -> dict:
         result = {"host": None, "domain": None, "username": None, "password": None}
 
         try:
@@ -233,7 +403,7 @@ class SSHS8:
         for attempt in range(40):
             data = await page.evaluate(r"""
                 () => {
-                    const out = { all_values: [], host: null, domain: null, username: null, password: null, debug: [] };
+                    const out = { all_values: [], host: null, domain: null, username: null, password: null };
 
                     const allInputs = Array.from(document.querySelectorAll('input'));
                     
@@ -244,31 +414,6 @@ class SSHS8:
                         if (val.length < 2) continue;
                         
                         out.all_values.push({ value: val });
-                        out.debug.push({
-                            value: val.substring(0, 40),
-                            type: inp.type || '',
-                            name: inp.name || '',
-                            id: inp.id || '',
-                        });
-                    }
-                    
-                    if (out.all_values.length === 0) {
-                        const bodyText = document.body.innerText || '';
-                        
-                        const patterns = {
-                            ipv4: /(?:IPv4|IP|Host)[\s:]*([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/i,
-                            domain: /(?:Domain|Hostname)[\s:]*([a-z0-9\-\.]+\.[a-z]{2,})/i,
-                            username: /(?:Username|User)[\s:]*([a-zA-Z0-9_\-]{4,30})/i,
-                            password: /(?:Password|Pass)[\s:]*([a-zA-Z0-9!@#$%^&*_\-]{6,40})/i,
-                        };
-                        
-                        for (const [key, regex] of Object.entries(patterns)) {
-                            const m = bodyText.match(regex);
-                            if (m && m[1]) {
-                                out.all_values.push({ value: m[1] });
-                                out.debug.push({ value: m[1].substring(0, 40), source: 'text_' + key });
-                            }
-                        }
                     }
                     
                     const vals = out.all_values.map(x => x.value);
@@ -282,23 +427,6 @@ class SSHS8:
                                 !v.startsWith('172.16.') &&
                                 !v.startsWith('127.')) {
                                 out.host = v;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!out.host) {
-                        const bodyText = document.body.innerText || '';
-                        const ips = bodyText.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
-                        for (const ip of ips) {
-                            const parts = ip.split('.').map(Number);
-                            if (parts.every(p => p >= 0 && p <= 255) &&
-                                !ip.startsWith('192.168.') &&
-                                !ip.startsWith('10.') &&
-                                !ip.startsWith('172.16.') &&
-                                !ip.startsWith('127.') &&
-                                ip !== '0.0.0.0') {
-                                out.host = ip;
                                 break;
                             }
                         }
@@ -337,10 +465,6 @@ class SSHS8:
                 }
             """)
 
-            log.info(f"🔍 attempt {attempt+1}: host={data.get('host')} domain={data.get('domain')} user={data.get('username')} pass={data.get('password')}")
-            if attempt == 0:
-                log.info(f"🔍 debug: {data.get('debug', [])[:10]}")
-
             if data.get("host") and not result["host"]:
                 result["host"] = data["host"]
             if data.get("domain") and not result["domain"]:
@@ -351,12 +475,143 @@ class SSHS8:
                 result["password"] = data["password"]
 
             if result["host"] and result["username"] and result["password"]:
-                log.info("✅ معلومات كاملة!")
                 break
 
             await page.wait_for_timeout(2000)
 
         return result
+
+    # ═══════════════════════════════════════
+    # استخراج Link TLS (VMESS / VLESS)
+    # ═══════════════════════════════════════
+
+    async def _extract_link_tls(self, page) -> str:
+        for attempt in range(30):
+            link = await page.evaluate(r"""
+                () => {
+                    const labels = document.querySelectorAll('*');
+                    
+                    for (const el of labels) {
+                        const txt = (el.innerText || el.textContent || '').trim();
+                        if (txt === 'Link TLS' || txt === 'Link TLS:') {
+                            let parent = el.parentElement;
+                            for (let d = 0; d < 5 && parent; d++) {
+                                const inp = parent.querySelector('input, textarea');
+                                if (inp) {
+                                    const val = (inp.value || inp.textContent || '').trim();
+                                    if (val && val.length > 20) return val;
+                                }
+                                parent = parent.parentElement;
+                            }
+                            let next = el.nextElementSibling;
+                            for (let i = 0; i < 5 && next; i++) {
+                                const inp = next.querySelector ? next.querySelector('input, textarea') : null;
+                                if (inp) {
+                                    const val = (inp.value || inp.textContent || '').trim();
+                                    if (val && val.length > 20) return val;
+                                }
+                                if (next.tagName === 'INPUT' || next.tagName === 'TEXTAREA') {
+                                    const val = (next.value || next.textContent || '').trim();
+                                    if (val && val.length > 20) return val;
+                                }
+                                next = next.nextElementSibling;
+                            }
+                        }
+                    }
+                    
+                    const allInputs = document.querySelectorAll('input, textarea');
+                    for (const inp of allInputs) {
+                        const val = (inp.value || inp.textContent || '').trim();
+                        if (val && (val.startsWith('vmess://') || val.startsWith('vless://') || val.startsWith('eyJ'))) {
+                            const parent = inp.closest('div, tr, td');
+                            if (parent) {
+                                const ptxt = (parent.innerText || '').toLowerCase();
+                                if (ptxt.includes('tls') && !ptxt.includes('no tls') && !ptxt.includes('notls')) {
+                                    return val;
+                                }
+                            }
+                        }
+                    }
+                    
+                    for (const inp of allInputs) {
+                        const val = (inp.value || inp.textContent || '').trim();
+                        if (val && val.length > 30 && !val.toLowerCase().includes('copy')) {
+                            if (/^[A-Za-z0-9+/=]+$/.test(val.substring(0, 50))) {
+                                return val;
+                            }
+                        }
+                    }
+                    
+                    return null;
+                }
+            """)
+
+            if link:
+                return link.strip()
+
+            await page.wait_for_timeout(2000)
+
+        return None
+
+    # ═══════════════════════════════════════
+    # فك base64
+    # ═══════════════════════════════════════
+
+    def _decode_vmess_link(self, link: str) -> dict:
+        try:
+            # vmess://
+            if link.startswith("vmess://"):
+                b64 = link.replace("vmess://", "").strip()
+            elif link.startswith("vless://"):
+                # VLESS كيبدا بـ vless:// — كنستخرجو الـ UUID من query
+                return self._parse_vless_link(link)
+            else:
+                b64 = link.strip()
+
+            b64 = b64 + ("=" * ((4 - (len(b64) % 4)) % 4))
+
+            try:
+                decoded = base64.b64decode(b64).decode("utf-8")
+            except Exception:
+                decoded = base64.urlsafe_b64decode(b64).decode("utf-8")
+
+            try:
+                data = json.loads(decoded)
+                return data
+            except Exception:
+                return None
+
+        except Exception as e:
+            log.error(f"❌ _decode_vmess_link: {e}")
+            return None
+
+    def _parse_vless_link(self, link: str) -> dict:
+        """يفك vless:// link"""
+        try:
+            from urllib.parse import urlparse, parse_qs, unquote
+
+            # vless://uuid@host:port?params#name
+            u = link.replace("vless://", "")
+            parsed = urlparse("vless://" + u)
+
+            uuid = parsed.username or parsed.netloc.split("@")[0] if "@" in parsed.netloc else ""
+            host = parsed.hostname or ""
+            port = parsed.port or 443
+            params = parse_qs(parsed.query)
+
+            return {
+                "id": uuid,
+                "add": host,
+                "port": port,
+                "net": params.get("type", ["ws"])[0],
+                "path": unquote(params.get("path", ["/vless/"])[0]),
+                "host": params.get("host", ["googlevideo.com"])[0],
+                "sni": params.get("sni", params.get("host", ["youtube.com"]))[0],
+                "tls": params.get("security", ["tls"])[0],
+            }
+        except Exception as e:
+            log.error(f"❌ _parse_vless_link: {e}")
+            return None
 
     async def close(self):
         try:
