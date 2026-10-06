@@ -8,7 +8,9 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from bot import messages
-from bot.keyboards import main_menu, admin_menu, ssh_countries_menu
+from bot.keyboards import (
+    main_menu, admin_menu, ssh_types_menu, countries_menu, ssh_countries_menu
+)
 from database import db
 from utils.helpers import extract_urls
 from utils.logger import get_logger
@@ -192,7 +194,7 @@ async def request_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await db.add_request(user.id, user.username or user.first_name)
-    await update.message.reply_text("✅ تم إرسال طلبك للـ ADMIN. رايح نراجعوه قريباً.")
+    await update.message.reply_text("✅ تم إرسال طلبك للـ ADMIN. رايح نراجعه قريباً.")
 
     try:
         await context.bot.send_message(
@@ -265,24 +267,18 @@ def is_direct_addsession_url(url: str) -> bool:
 
 
 # ═══════════════════════════════════════════
-# handle_url
+# handle_url (SSO)
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
     if await db.is_globally_stopped() and not is_admin(user.id):
-        await update.message.reply_text(
-            "⛔ *البوت متوقف حالياً*\n\nجرب من بعد.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await update.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
         return
 
     if not await db.has_access(user.id):
-        await update.message.reply_text(
-            "🔒 ما عندكش صلاحية.\nأرسل `/request` باش تطلب.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        await update.message.reply_text("🔒 ما عندكش صلاحية.\nأرسل `/request`.", parse_mode=ParseMode.MARKDOWN)
         return
 
     text = update.message.text or ""
@@ -302,41 +298,14 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = await db.get_user(user.id)
     priority = (u.get("priority") or 0) if u else 0
 
-    if is_full_sso_url(sso_url):
-        num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag, priority)
-        pos = queue.position(user.id)
-        if pos > 1:
-            await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.\n📍 موقعك في الطابور: {pos}")
-        else:
-            await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
-        asyncio.create_task(process_queue(update.effective_chat.id, context))
-        return
-
-    if is_direct_addsession_url(sso_url):
-        email = extract_email_from_url(sso_url)
-        if email:
-            await db.set_session(user_id=user.id, sso_url=sso_url, state="waiting_password")
-            await update.message.reply_text(
-                f"📧 لقينا الإيميل:\n`{email}`\n\n🔑 *أرسل كلمة السر باش نكملو:*",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            return
-        else:
-            await update.message.reply_text("⚠️ ما قدرناش نستخرجو الإيميل.")
-            return
-
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag, priority)
     pos = queue.position(user.id)
     if pos > 1:
-        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.\n📍 موقعك في الطابور: {pos}")
+        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.\n📍 موقعك: {pos}")
     else:
         await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
     asyncio.create_task(process_queue(update.effective_chat.id, context))
 
-
-# ═══════════════════════════════════════════
-# handle_password
-# ═══════════════════════════════════════════
 
 async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -369,18 +338,9 @@ async def handle_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     priority = (u.get("priority") or 0) if u else 0
 
     num = await queue.add(user.id, update.effective_chat.id, sso_url, user_tag, priority)
-    pos = queue.position(user.id)
-    if pos > 1:
-        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.\n📍 موقعك في الطابور: {pos}")
-    else:
-        await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
-
     asyncio.create_task(process_queue(update.effective_chat.id, context))
+    await update.message.reply_text(f"📥 تم استلام الرابط رقم {num}.")
 
-
-# ═══════════════════════════════════════════
-# process_queue
-# ═══════════════════════════════════════════
 
 async def process_queue(chat_id, context):
     async with asyncio.Lock():
@@ -428,10 +388,7 @@ async def process_queue(chat_id, context):
                         new_uri = build_darktunnel_uri_with_host(dark["uri"], domain)
                         if not new_uri:
                             continue
-                        safe_domain = "".join(
-                            c for c in domain.lower()
-                            if c.isalnum() or c in ".-_"
-                        )[:40]
+                        safe_domain = "".join(c for c in domain.lower() if c.isalnum() or c in ".-_")[:40]
                         display_name = f"{dark['name']}_{flag}"
                         filename = f"{display_name} - {safe_domain}.dark"
                         bio = io.BytesIO(new_uri.encode("utf-8"))
@@ -444,13 +401,11 @@ async def process_queue(chat_id, context):
                             caption=f"✅ {display_name}",
                         )
                     except Exception as e:
-                        log.error(f"❌ dark {dark['name']}: {e}", exc_info=True)
+                        log.error(f"❌ dark: {e}")
 
                 try:
                     await msg.edit_text(
-                        f"✅ *تم النشر!*\n\n"
-                        f"🌐 *رابط run.app:*\n`{final_url}`\n\n"
-                        f"🌍 *Region:* {flag}",
+                        f"✅ *تم النشر!*\n\n🌐 `{final_url}`\n🌍 {flag}",
                         parse_mode=ParseMode.MARKDOWN,
                     )
                 except Exception:
@@ -463,12 +418,11 @@ async def process_queue(chat_id, context):
                     pass
 
         except Exception as e:
-            log.exception("فشل تنفيذ المهمة")
+            log.exception("فشل المهمة")
             try:
-                await context.bot.send_message(chat_id=job["chat_id"], text=f"❌ فشل\n\n{str(e)[:400]}")
+                await context.bot.send_message(chat_id=job["chat_id"], text=f"❌ {str(e)[:400]}")
             except Exception:
                 pass
-
         finally:
             await queue.finish()
             if queue.queue_size() > 0:
@@ -476,55 +430,26 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# VMESS Handler — يعرض الدول
+# SSH WebSocket — 2 أزرار
 # ═══════════════════════════════════════════
 
-async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """زر VMESS — يعرض قائمة الدول"""
-    log.info("🌐 VMESS clicked")
-
+async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log.info("🔐 SSH clicked")
     query = update.callback_query
     user = update.effective_user
 
-    if query:
-        chat_id = query.message.chat_id
-    else:
-        chat_id = update.message.chat_id
+    chat_id = query.message.chat_id if query else update.message.chat_id
 
     if await db.is_globally_stopped() and not is_admin(user.id):
-        try:
-            await context.bot.send_message(chat_id=chat_id, text="⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
-        except Exception:
-            pass
+        await context.bot.send_message(chat_id=chat_id, text="⛔ *البوت متوقف*", parse_mode=ParseMode.MARKDOWN)
         return
 
     if not await db.has_access(user.id):
-        try:
-            await context.bot.send_message(chat_id=chat_id, text="🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
-        except Exception:
-            pass
+        await context.bot.send_message(chat_id=chat_id, text="🔒 ما عندكش صلاحية.")
         return
 
-    try:
-        from automation.vmess import COUNTRIES
-    except Exception as e:
-        log.error(f"❌ import COUNTRIES: {e}")
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطأ: {e}")
-        return
-
-    rows = []
-    for idx, c in enumerate(COUNTRIES):
-        rows.append([
-            InlineKeyboardButton(
-                f"{c['flag']} {c['name']}",
-                callback_data=f"vmess_country:{idx}"
-            )
-        ])
-    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
-
-    kb = InlineKeyboardMarkup(rows)
-
-    text = "🌐 *VMESS — اختر الدولة:*"
+    text = "🔐 *SSH WebSocket*\n\nاختر النوع:"
+    kb = ssh_types_menu()
 
     if query:
         try:
@@ -536,57 +461,98 @@ async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# VMESS Country — ينشئ الحساب للدولة
+# SSH Create — يعرض الدول
 # ═══════════════════════════════════════════
 
-async def vmess_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ينشئ حساب VMESS للدولة المختارة"""
+async def ssh_create_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user = update.effective_user
-    chat_id = query.message.chat_id
 
-    idx = int(query.data.split(":")[1])
-    log.info(f"🌐 VMESS country: idx={idx}")
-
-    try:
-        from automation.vmess import COUNTRIES, VMESS
-    except Exception as e:
-        log.error(f"❌ import: {e}")
-        await query.message.edit_text(f"❌ خطأ: {e}")
-        return
-
-    if idx < 0 or idx >= len(COUNTRIES):
-        await query.message.edit_text("❌ دولة غير موجودة.")
-        return
-
-    country = COUNTRIES[idx]
-    country_name = country["name"]
-    country_flag = country["flag"]
-    country_url = country["url"]
+    kind = query.data.split(":")[1]
+    log.info(f"🔐 SSH create: {kind}")
 
     if await db.is_globally_stopped() and not is_admin(user.id):
-        await query.message.edit_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
+        await query.message.edit_text("⛔ *البوت متوقف*", parse_mode=ParseMode.MARKDOWN)
         return
 
     if not await db.has_access(user.id):
-        await query.message.edit_text("🔒 ما عندكش صلاحية.", parse_mode=ParseMode.MARKDOWN)
+        await query.message.edit_text("🔒 ما عندكش صلاحية.")
         return
 
-    await query.message.edit_text(
-        f"⏳ جاري إنشاء حساب VMESS\n"
-        f"🌍 الدولة: {country_flag} {country_name}..."
-    )
+    from automation.sshs8 import SSH_COUNTRIES
+
+    emoji = "🎬" if kind == "youtube" else "👻"
+    kind_name = "YOUTUBE" if kind == "youtube" else "SNAPCHAT"
+
+    kb = countries_menu(f"ssh_{kind}", SSH_COUNTRIES)
+    try:
+        await query.message.edit_text(
+            f"{emoji} *{kind_name} 4DAY*\n\n🌍 *اختر الدولة:*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=kb,
+        )
+    except Exception:
+        pass
+
+
+# ═══════════════════════════════════════════
+# SSH Country — ينشئ الحساب
+# ═══════════════════════════════════════════
+
+async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    data = query.data  # ssh_youtube_country:0
+    parts = data.split(":")
+    kind_part = parts[0]  # ssh_youtube_country
+    idx = int(parts[1])
+
+    kind = "youtube"
+    if "snapchat" in kind_part:
+        kind = "snapchat"
+
+    log.info(f"🔐 SSH country: {kind} idx={idx}")
+
+    from automation.sshs8 import SSHS8, SSH_COUNTRIES, SNAPCHAT_TEMPLATE_URI, YOUTUBE_TEMPLATE_URI
+    from automation.vmess import modify_ssh_template
+
+    if kind == "snapchat":
+        template_uri = SNAPCHAT_TEMPLATE_URI
+        emoji = "👻"
+        kind_name = "SNAPCHAT"
+    else:
+        template_uri = YOUTUBE_TEMPLATE_URI
+        emoji = "🎬"
+        kind_name = "YOUTUBE"
+
+    if idx < 0 or idx >= len(SSH_COUNTRIES):
+        await query.message.edit_text("❌ دولة غير موجودة.")
+        return
+
+    country = SSH_COUNTRIES[idx]
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await query.message.edit_text("⛔ *البوت متوقف*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await query.message.edit_text("🔒 ما عندكاش صلاحية.")
+        return
+
+    await query.message.edit_text(f"⏳ جاري إنشاء حساب {emoji} {kind_name}\n🌍 {country['flag']} {country['name']}...")
 
     browser = StealthBrowser()
     try:
         ctx = await browser.start()
-        vmess = VMESS(ctx, sender=None, user_tag=user.username or user.first_name)
-        vmess.set_chat(chat_id)
-        vmess.bot = context.bot
+        ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
+        ssh.set_chat(chat_id)
+        ssh.bot = context.bot
 
-        ok = await vmess.open_page(country_url)
+        ok = await ssh.open_page(country["url"])
         if not ok:
             await query.message.edit_text("❌ ما قدرناش نفتحو الصفحة.")
             try:
@@ -595,48 +561,42 @@ async def vmess_country_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 pass
             return
 
-        result = await vmess.create_account()
+        result = await ssh.create_ssh_account()
 
         if not result.get("success"):
-            error_msg = result.get("message", "سبب غير معروف")
-            await query.message.edit_text(f"❌ فشل.\n\n{error_msg}")
+            await query.message.edit_text(f"❌ فشل.\n\n{result.get('message', '')}")
             try:
-                await vmess.close()
+                await ssh.close()
                 await browser.close()
             except Exception:
                 pass
             return
 
-        vmess_config = result.get("vmess_config") or {}
-        dark_uri = result.get("dark_uri")
+        host = result.get("host")
+        username = result.get("username")
+        password = result.get("password")
 
-        if not dark_uri:
-            await query.message.edit_text("❌ فشل بناء ملف dark.")
-            try:
-                await vmess.close()
-                await browser.close()
-            except Exception:
-                pass
-            return
-
-        # ✅ معلومات الحساب
         await context.bot.send_message(
             chat_id=chat_id,
             text=(
-                f"✅ *VMESS Account*\n\n"
-                f"🌍 الدولة: {country_flag} {country_name}\n"
-                f"🌐 Host: `{vmess_config.get('add', '-')}`\n"
-                f"🔌 Port: `{vmess_config.get('port', '-')}`\n"
-                f"🆔 UUID: `{vmess_config.get('id', '-')}`\n"
-                f"🔐 SNI: `{vmess_config.get('sni', '-')}`\n"
-                f"📁 Path: `{vmess_config.get('path', '-')}`"
+                f"✅ *SSH Account*\n\n"
+                f"{emoji} النوع: {kind_name}\n"
+                f"🌍 الدولة: {country['flag']} {country['name']}\n"
+                f"🖥️ Host: `{host}`\n"
+                f"🔌 Port: `22`\n"
+                f"👤 User: `{username}`\n"
+                f"🔑 Pass: `{password}`"
             ),
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ اسم الملف مع إيموجي الدولة
-        filename_out = f"VMESS_4DAY{country_flag}.dark"
-        bio = io.BytesIO(dark_uri.encode("utf-8"))
+        new_uri = modify_ssh_template(template_uri, host, username, password)
+        if not new_uri:
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
+            return
+
+        filename_out = f"{kind_name}_4DAY{country['flag']}.dark"
+        bio = io.BytesIO(new_uri.encode("utf-8"))
         bio.name = filename_out
         bio.seek(0)
 
@@ -651,9 +611,159 @@ async def vmess_country_handler(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.delete()
         except Exception:
             pass
+        try:
+            await ssh.close()
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+    except Exception as e:
+        log.exception("فشل SSH country")
+        try:
+            await query.message.edit_text(f"❌ {str(e)[:300]}")
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+# ═══════════════════════════════════════════
+# VMESS — عرض الدول
+# ═══════════════════════════════════════════
+
+async def handle_vmess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log.info("🌐 VMESS clicked")
+    query = update.callback_query
+    user = update.effective_user
+
+    chat_id = query.message.chat_id if query else update.message.chat_id
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await context.bot.send_message(chat_id=chat_id, text="⛔ *البوت متوقف*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await context.bot.send_message(chat_id=chat_id, text="🔒 ما عندكش صلاحية.")
+        return
+
+    from automation.sshs8 import VMESS_COUNTRIES
+
+    kb = countries_menu("vmess", VMESS_COUNTRIES)
+    text = "🌐 *VMESS — اختر الدولة:*"
+
+    if query:
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+        except Exception:
+            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+
+
+# ═══════════════════════════════════════════
+# VMESS Country
+# ═══════════════════════════════════════════
+
+async def vmess_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    idx = int(query.data.split(":")[1])
+    log.info(f"🌐 VMESS country: idx={idx}")
+
+    from automation.sshs8 import SSHS8, VMESS_COUNTRIES
+    from automation.vmess import build_vmess_dark
+
+    if idx < 0 or idx >= len(VMESS_COUNTRIES):
+        await query.message.edit_text("❌ دولة غير موجودة.")
+        return
+
+    country = VMESS_COUNTRIES[idx]
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await query.message.edit_text("⛔ *البوت متوقف*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await query.message.edit_text("🔒 ما عندكش صلاحية.")
+        return
+
+    await query.message.edit_text(f"⏳ VMESS — 🌍 {country['flag']} {country['name']}...")
+
+    browser = StealthBrowser()
+    try:
+        ctx = await browser.start()
+        ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
+        ssh.set_chat(chat_id)
+        ssh.bot = context.bot
+
+        ok = await ssh.open_page(country["url"])
+        if not ok:
+            await query.message.edit_text("❌ ما قدرناش نفتحو الصفحة.")
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            return
+
+        result = await ssh.create_vmess_account()
+
+        if not result.get("success"):
+            await query.message.edit_text(f"❌ فشل.\n\n{result.get('message', '')}")
+            try:
+                await ssh.close()
+                await browser.close()
+            except Exception:
+                pass
+            return
+
+        vmess_config = result.get("vmess_config") or {}
+        password = result.get("password") or "vmess_user"
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"✅ *VMESS Account*\n\n"
+                f"🌍 الدولة: {country['flag']} {country['name']}\n"
+                f"🌐 Host: `{vmess_config.get('add', '-')}`\n"
+                f"🔌 Port: `{vmess_config.get('port', '-')}`\n"
+                f"🆔 UUID: `{vmess_config.get('id', '-')}`\n"
+                f"🔐 SNI: `{vmess_config.get('sni', '-')}`\n"
+                f"📁 Path: `{vmess_config.get('path', '-')}`"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        new_uri = build_vmess_dark(vmess_config, password)
+        if not new_uri:
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
+            return
+
+        filename_out = f"VMESS_4DAY{country['flag']}.dark"
+        bio = io.BytesIO(new_uri.encode("utf-8"))
+        bio.name = filename_out
+        bio.seek(0)
+
+        await context.bot.send_document(
+            chat_id=chat_id,
+            document=bio,
+            filename=filename_out,
+            caption=f"📁 {filename_out}",
+        )
 
         try:
-            await vmess.close()
+            await query.message.delete()
+        except Exception:
+            pass
+        try:
+            await ssh.close()
         except Exception:
             pass
         try:
@@ -664,7 +774,158 @@ async def vmess_country_handler(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         log.exception("فشل VMESS country")
         try:
-            await query.message.edit_text(f"❌ فشل: {str(e)[:300]}")
+            await query.message.edit_text(f"❌ {str(e)[:300]}")
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+# ═══════════════════════════════════════════
+# VLESS — عرض الدول
+# ═══════════════════════════════════════════
+
+async def handle_vless(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log.info("⚡ VLESS clicked")
+    query = update.callback_query
+    user = update.effective_user
+
+    chat_id = query.message.chat_id if query else update.message.chat_id
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await context.bot.send_message(chat_id=chat_id, text="⛔ *البوت متوقف*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await context.bot.send_message(chat_id=chat_id, text="🔒 ما عندكش صلاحية.")
+        return
+
+    from automation.sshs8 import VLESS_COUNTRIES
+
+    kb = countries_menu("vless", VLESS_COUNTRIES)
+    text = "⚡ *VLESS — اختر الدولة:*"
+
+    if query:
+        try:
+            await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+        except Exception:
+            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+    else:
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb)
+
+
+# ═══════════════════════════════════════════
+# VLESS Country
+# ═══════════════════════════════════════════
+
+async def vless_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    idx = int(query.data.split(":")[1])
+    log.info(f"⚡ VLESS country: idx={idx}")
+
+    from automation.sshs8 import SSHS8, VLESS_COUNTRIES
+    from automation.vmess import build_vless_dark
+
+    if idx < 0 or idx >= len(VLESS_COUNTRIES):
+        await query.message.edit_text("❌ دولة غير موجودة.")
+        return
+
+    country = VLESS_COUNTRIES[idx]
+
+    if await db.is_globally_stopped() and not is_admin(user.id):
+        await query.message.edit_text("⛔ *البوت متوقف*", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if not await db.has_access(user.id):
+        await query.message.edit_text("🔒 ما عندكش صلاحية.")
+        return
+
+    await query.message.edit_text(f"⏳ VLESS — 🌍 {country['flag']} {country['name']}...")
+
+    browser = StealthBrowser()
+    try:
+        ctx = await browser.start()
+        ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
+        ssh.set_chat(chat_id)
+        ssh.bot = context.bot
+
+        ok = await ssh.open_page(country["url"])
+        if not ok:
+            await query.message.edit_text("❌ ما قدرناش نفتحو الصفحة.")
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            return
+
+        result = await ssh.create_vmess_account()
+
+        if not result.get("success"):
+            await query.message.edit_text(f"❌ فشل.\n\n{result.get('message', '')}")
+            try:
+                await ssh.close()
+                await browser.close()
+            except Exception:
+                pass
+            return
+
+        vless_config = result.get("vmess_config") or {}
+        password = result.get("password") or "vless_user"
+
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"✅ *VLESS Account*\n\n"
+                f"🌍 الدولة: {country['flag']} {country['name']}\n"
+                f"🌐 Host: `{vless_config.get('add', '-')}`\n"
+                f"🔌 Port: `{vless_config.get('port', '-')}`\n"
+                f"🆔 UUID: `{vless_config.get('id', '-')}`\n"
+                f"🔐 SNI: `{vless_config.get('sni', '-')}`\n"
+                f"📁 Path: `{vless_config.get('path', '-')}`"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+        new_uri = build_vless_dark(vless_config, password)
+        if not new_uri:
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
+            return
+
+        filename_out = f"VLESS_4DAY{country['flag']}.dark"
+        bio = io.BytesIO(new_uri.encode("utf-8"))
+        bio.name = filename_out
+        bio.seek(0)
+
+        await context.bot.send_document(
+            chat_id=chat_id,
+            document=bio,
+            filename=filename_out,
+            caption=f"📁 {filename_out}",
+        )
+
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        try:
+            await ssh.close()
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+    except Exception as e:
+        log.exception("فشل VLESS country")
+        try:
+            await query.message.edit_text(f"❌ {str(e)[:300]}")
         except Exception:
             pass
         try:
@@ -698,12 +959,12 @@ async def admin_stats(query):
     text = (
         f"📊 *إحصائيات البوت*\n\n"
         f"🟢 الحالة: {status}\n"
-        f"👥 مجموع المستخدمين: {len(users)}\n"
-        f"✅ مستخدمين نشطين: {len(active)}\n"
+        f"👥 مجموع: {len(users)}\n"
+        f"✅ نشطين: {len(active)}\n"
         f"🚫 محظورين: {len(banned)}\n"
         f"📋 طلبات: {len(reqs)}\n"
         f"🔧 مهام: {total}\n"
-        f"📦 في الطابور: {queue.queue_size()}\n"
+        f"📦 طابور: {queue.queue_size()}\n"
     )
     try:
         await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
@@ -719,10 +980,8 @@ async def admin_users(query):
         pri = f"⚡{u.get('priority',0)}" if u.get("priority") else ""
         name = u.get("username") or "-"
         lines.append(f"{emoji} `{u['user_id']}` — {name} {pri}")
-
-    text = "\n".join(lines) or "لا مستخدمين"
     try:
-        await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
+        await query.message.edit_text("\n".join(lines) or "لا مستخدمين", parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
     except Exception:
         pass
 
@@ -745,18 +1004,14 @@ async def admin_banned(query):
 async def admin_requests(query):
     reqs = await db.get_requests("pending")
     if not reqs:
-        text = "📋 لا طلبات"
         try:
-            await query.message.edit_text(text, reply_markup=admin_menu())
+            await query.message.edit_text("📋 لا طلبات", reply_markup=admin_menu())
         except Exception:
             pass
         return
-
-    lines = ["📋 *طلبات استخدام:*\n"]
+    lines = ["📋 *طلبات:*\n"]
     for r in reqs[:20]:
         lines.append(f"• `{r['user_id']}` — {r.get('username') or '-'}")
-    lines.append("\n✅ للتفعيل: `/grant ID`")
-    lines.append("🚫 للحظر: `/ban ID`")
     try:
         await query.message.edit_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
     except Exception:
@@ -766,7 +1021,7 @@ async def admin_requests(query):
 async def admin_priority(query, context):
     context.user_data["await"] = "priority"
     try:
-        await query.message.edit_text("⚡ *زيادة سرعة مستخدم*\n\nأرسل ID المستخدم:", parse_mode=ParseMode.MARKDOWN)
+        await query.message.edit_text("⚡ *زيادة سرعة*\n\nأرسل ID:", parse_mode=ParseMode.MARKDOWN)
     except Exception:
         pass
 
@@ -774,7 +1029,7 @@ async def admin_priority(query, context):
 async def admin_ban(query, context):
     context.user_data["await"] = "ban"
     try:
-        await query.message.edit_text("🔨 *حظر مستخدم*\n\nأرسل ID:", parse_mode=ParseMode.MARKDOWN)
+        await query.message.edit_text("🔨 *حظر*\n\nأرسل ID:", parse_mode=ParseMode.MARKDOWN)
     except Exception:
         pass
 
@@ -782,7 +1037,7 @@ async def admin_ban(query, context):
 async def admin_grant(query, context):
     context.user_data["await"] = "grant"
     try:
-        await query.message.edit_text("✅ *إعطاء صلاحية*\n\nأرسل ID:", parse_mode=ParseMode.MARKDOWN)
+        await query.message.edit_text("✅ *صلاحية*\n\nأرسل ID:", parse_mode=ParseMode.MARKDOWN)
     except Exception:
         pass
 
@@ -798,7 +1053,7 @@ async def admin_pause(query, context):
 async def admin_broadcast(query, context):
     context.user_data["await"] = "broadcast"
     try:
-        await query.message.edit_text("📢 *إرسال رسالة*\n\nأرسل الرسالة:", parse_mode=ParseMode.MARKDOWN)
+        await query.message.edit_text("📢 *رسالة*\n\nأرسل النص:", parse_mode=ParseMode.MARKDOWN)
     except Exception:
         pass
 
@@ -807,9 +1062,7 @@ async def admin_stop_all(query):
     await db.set_global_stop(True)
     try:
         await query.message.edit_text(
-            "⛔ *تم إيقاف البوت عن جميع المستخدمين*\n\n"
-            "✅ غير ADMIN كيقدر يستعملو.\n"
-            "🔙 اضغط للرجوع.",
+            "⛔ *تم الإيقاف للجميع*",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=admin_menu(),
         )
@@ -821,8 +1074,7 @@ async def admin_start_all(query):
     await db.set_global_stop(False)
     try:
         await query.message.edit_text(
-            "▶️ *تم تشغيل البوت للجميع*\n\n"
-            "✅ المستخدمين المسموحين رايح يقدرون يستعملو.",
+            "▶️ *تم التشغيل للجميع*",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=admin_menu(),
         )
@@ -860,7 +1112,7 @@ async def handle_admin_input(update, context, text):
         elif mode == "priority":
             uid = int(text)
             await db.set_priority(uid, 100)
-            await update.message.reply_text(f"⚡ تم زيادة سرعة `{uid}`", parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(f"⚡ تم زيادة `{uid}`", parse_mode=ParseMode.MARKDOWN)
 
         elif mode == "pause":
             uid = int(text)
@@ -868,8 +1120,7 @@ async def handle_admin_input(update, context, text):
             if u:
                 new_val = 0 if u.get("access") else 1
                 await db.set_access(uid, new_val)
-                state = "تشغيل" if new_val else "توقيف"
-                await update.message.reply_text(f"⏸️ تم {state} `{uid}`", parse_mode=ParseMode.MARKDOWN)
+                await update.message.reply_text(f"⏸️ تم تبديل `{uid}`", parse_mode=ParseMode.MARKDOWN)
 
         elif mode == "broadcast":
             users = await db.get_all_users()
@@ -880,10 +1131,10 @@ async def handle_admin_input(update, context, text):
                     sent += 1
                 except Exception:
                     pass
-            await update.message.reply_text(f"📢 تم الإرسال لـ {sent} مستخدم")
+            await update.message.reply_text(f"📢 تم الإرسال لـ {sent}")
 
     except Exception as e:
-        await update.message.reply_text(f"❌ فشل: {e}")
+        await update.message.reply_text(f"❌ {e}")
 
     return True
 
@@ -900,30 +1151,59 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     log.info(f"🔘 callback: {data}")
 
-    # ✅ VMESS — عرض الدول
+    # SSH
+    if data == "ssh_ws":
+        try:
+            await handle_ssh(update, context)
+        except Exception as e:
+            log.exception("فشل SSH")
+        return
+
+    if data.startswith("ssh_create:"):
+        try:
+            await ssh_create_handler(update, context)
+        except Exception as e:
+            log.exception("فشل SSH create")
+        return
+
+    if data.startswith("ssh_") and "_country:" in data:
+        try:
+            await ssh_country_handler(update, context)
+        except Exception as e:
+            log.exception("فشل SSH country")
+        return
+
+    # VMESS
     if data == "vmess":
         try:
             await handle_vmess(update, context)
         except Exception as e:
             log.exception("فشل VMESS")
-            try:
-                await query.message.reply_text(f"❌ {str(e)[:200]}")
-            except Exception:
-                pass
         return
 
-    # ✅ VMESS Country — إنشاء الحساب
     if data.startswith("vmess_country:"):
         try:
             await vmess_country_handler(update, context)
         except Exception as e:
             log.exception("فشل VMESS country")
-            try:
-                await query.message.reply_text(f"❌ {str(e)[:200]}")
-            except Exception:
-                pass
         return
 
+    # VLESS
+    if data == "vless":
+        try:
+            await handle_vless(update, context)
+        except Exception as e:
+            log.exception("فشل VLESS")
+        return
+
+    if data.startswith("vless_country:"):
+        try:
+            await vless_country_handler(update, context)
+        except Exception as e:
+            log.exception("فشل VLESS country")
+        return
+
+    # عام
     if data == "status":
         await status_cmd(update, context)
         return
@@ -942,7 +1222,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("admin") and not is_admin(user.id):
-        await query.message.reply_text("🚫 نتا ماشي ADMIN")
+        await query.message.reply_text("🚫 ماشي ADMIN")
         return
 
     if data == "admin":
