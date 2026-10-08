@@ -97,6 +97,7 @@ def _b64_pad(s: str) -> str:
 
 
 def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
+    """يعدل wsHeaderHost فـ ملفات VLESS (Cloud Run)"""
     try:
         raw_b64 = base_uri.split("darktunnel://", 1)[1].strip()
         raw_b64 = _b64_pad(raw_b64)
@@ -533,9 +534,9 @@ async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ ملفين فقط
+        # ✅ ملفين
         for kind, kind_name in [("youtube", "YOUTUBE"), ("snapchat", "SNAPCHAT")]:
-            new_uri = build_ssh_dark(host, username, password, kind=kind)
+            new_uri = build_ssh_dark(host, username, password, kind=kind, country=country)
             if not new_uri:
                 continue
             filename_out = f"{kind_name}_4DAY{country['flag']}.dark"
@@ -676,9 +677,8 @@ async def vmess_country_handler(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ ملفين فقط
         for kind, kind_name in [("youtube", "YOUTUBE"), ("snapchat", "SNAPCHAT")]:
-            new_uri = build_vmess_dark(vmess_config, password, kind=kind)
+            new_uri = build_vmess_dark(vmess_config, password, kind=kind, country=country)
             if not new_uri:
                 continue
             filename_out = f"VMESS_{kind_name}_4DAY{country['flag']}.dark"
@@ -819,9 +819,8 @@ async def vless_country_handler(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode=ParseMode.MARKDOWN,
         )
 
-        # ✅ ملفين فقط
         for kind, kind_name in [("youtube", "YOUTUBE"), ("snapchat", "SNAPCHAT")]:
-            new_uri = build_vless_dark(vless_config, password, kind=kind)
+            new_uri = build_vless_dark(vless_config, password, kind=kind, country=country)
             if not new_uri:
                 continue
             filename_out = f"VLESS_{kind_name}_4DAY{country['flag']}.dark"
