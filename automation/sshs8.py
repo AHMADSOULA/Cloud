@@ -1,6 +1,7 @@
 """
 automation/sshs8.py
 - SSH / VMESS / VLESS
+- بلا تشفير
 """
 import asyncio
 import random
@@ -70,11 +71,6 @@ PAYLOADS = {
 }
 
 
-def _b64_pad(s: str) -> str:
-    s = s.strip()
-    return s + ("=" * ((4 - (len(s) % 4)) % 4)) if s else s
-
-
 def generate_password():
     chars = string.ascii_letters + string.digits
     return "".join(random.choices(chars, k=10))
@@ -92,10 +88,15 @@ class SSHS8:
     def set_chat(self, chat_id):
         self.chat_id = chat_id
 
+    # ═══════════════════════════════════════
+    # فتح صفحة
+    # ═══════════════════════════════════════
+
     async def open_page(self, url: str) -> bool:
         log.info(f"🌐 فتح: {url}")
         self.page = await self.context.new_page()
         page = self.page
+
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(3000)
@@ -114,10 +115,22 @@ class SSHS8:
             return {"success": False, "error": "no_page"}
 
         password_input_value = generate_password()
-        result = {"success": False, "username": None, "password": password_input_value, "host": None, "domain": None, "message": None}
+        result = {
+            "success": False,
+            "username": None,
+            "password": password_input_value,
+            "host": None,
+            "domain": None,
+            "message": None,
+        }
 
         try:
-            for sel in ['input[type="password"]', 'input[name*="pass" i]', 'input[id*="pass" i]']:
+            # تعبئة Password
+            for sel in [
+                'input[type="password"]',
+                'input[name*="pass" i]',
+                'input[id*="pass" i]',
+            ]:
                 try:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
@@ -134,8 +147,15 @@ class SSHS8:
             await page.wait_for_timeout(500)
             url_before = page.url
 
+            # ضغط Create
             clicked = False
-            for sel in ['button:has-text("Create an account")', 'button:has-text("Create account")', 'input[value="Create an account"]', 'input[type="submit"]', 'button:has-text("Create")']:
+            for sel in [
+                'button:has-text("Create an account")',
+                'button:has-text("Create account")',
+                'input[value="Create an account"]',
+                'input[type="submit"]',
+                'button:has-text("Create")',
+            ]:
                 try:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
@@ -167,6 +187,7 @@ class SSHS8:
                 result["message"] = "❌ ما لقيناش زر Create"
                 return result
 
+            # نستناو URL يتبدل
             for i in range(20):
                 await page.wait_for_timeout(500)
                 if page.url != url_before:
@@ -174,6 +195,7 @@ class SSHS8:
 
             await page.wait_for_timeout(2000)
 
+            # استخراج
             creds = await self._extract_ssh_creds(page)
             result["host"] = creds.get("host")
             result["username"] = creds.get("username")
@@ -204,10 +226,21 @@ class SSHS8:
             return {"success": False, "error": "no_page"}
 
         password_value = generate_password()
-        result = {"success": False, "password": password_value, "link_tls": None, "vmess_config": None, "message": None}
+        result = {
+            "success": False,
+            "password": password_value,
+            "link_tls": None,
+            "vmess_config": None,
+            "message": None,
+        }
 
         try:
-            for sel in ['input[type="password"]', 'input[name*="pass" i]', 'input[id*="pass" i]']:
+            # تعبئة Password
+            for sel in [
+                'input[type="password"]',
+                'input[name*="pass" i]',
+                'input[id*="pass" i]',
+            ]:
                 try:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
@@ -224,8 +257,15 @@ class SSHS8:
             await page.wait_for_timeout(500)
             url_before = page.url
 
+            # ضغط Create
             clicked = False
-            for sel in ['button:has-text("Create an account")', 'button:has-text("Create account")', 'input[value="Create an account"]', 'input[type="submit"]', 'button:has-text("Create")']:
+            for sel in [
+                'button:has-text("Create an account")',
+                'button:has-text("Create account")',
+                'input[value="Create an account"]',
+                'input[type="submit"]',
+                'button:has-text("Create")',
+            ]:
                 try:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
@@ -257,6 +297,7 @@ class SSHS8:
                 result["message"] = "❌ ما لقيناش زر Create"
                 return result
 
+            # نستناو URL يتبدل
             for i in range(20):
                 await page.wait_for_timeout(500)
                 if page.url != url_before:
@@ -264,6 +305,7 @@ class SSHS8:
 
             await page.wait_for_timeout(3000)
 
+            # Link TLS
             link_tls = await self._extract_link_tls(page)
             if not link_tls:
                 result["message"] = "❌ ما لقيناش Link TLS."
@@ -284,6 +326,10 @@ class SSHS8:
 
         return result
 
+    # ═══════════════════════════════════════
+    # استخراج معلومات SSH
+    # ═══════════════════════════════════════
+
     async def _extract_ssh_creds(self, page) -> dict:
         result = {"host": None, "domain": None, "username": None, "password": None}
 
@@ -297,7 +343,9 @@ class SSHS8:
             data = await page.evaluate(r"""
                 () => {
                     const out = { all_values: [], host: null, domain: null, username: null, password: null };
+
                     const allInputs = Array.from(document.querySelectorAll('input'));
+
                     for (const inp of allInputs) {
                         const val = (inp.value || '').trim();
                         if (!val) continue;
@@ -305,53 +353,82 @@ class SSHS8:
                         if (val.length < 2) continue;
                         out.all_values.push({ value: val });
                     }
+
                     const vals = out.all_values.map(x => x.value);
+
                     for (const v of vals) {
                         if (/^(\d{1,3}\.){3}\d{1,3}$/.test(v)) {
                             const parts = v.split('.').map(Number);
-                            if (parts.every(p => p >= 0 && p <= 255) && !v.startsWith('192.168.') && !v.startsWith('10.') && !v.startsWith('172.16.') && !v.startsWith('127.')) {
-                                out.host = v; break;
+                            if (parts.every(p => p >= 0 && p <= 255) &&
+                                !v.startsWith('192.168.') &&
+                                !v.startsWith('10.') &&
+                                !v.startsWith('172.16.') &&
+                                !v.startsWith('127.')) {
+                                out.host = v;
+                                break;
                             }
                         }
                     }
+
                     for (const v of vals) {
                         if (v === out.host) continue;
-                        if (/^[a-z0-9\-\.]+\.[a-z]{2,}$/i.test(v) && !/^(\d{1,3}\.){3}\d{1,3}$/.test(v) && v.length < 60) {
-                            out.domain = v; break;
+                        if (/^[a-z0-9\-\.]+\.[a-z]{2,}$/i.test(v) &&
+                            !/^(\d{1,3}\.){3}\d{1,3}$/.test(v) &&
+                            v.length < 60) {
+                            out.domain = v;
+                            break;
                         }
                     }
+
                     for (const v of vals) {
                         if (v === out.host || v === out.domain) continue;
-                        if (/^[a-z0-9_\-]{4,30}$/i.test(v) && !/^\d+$/.test(v) && v.length >= 4 && v.length <= 30) {
-                            out.username = v; break;
+                        if (/^[a-z0-9_\-]{4,30}$/i.test(v) &&
+                            !/^\d+$/.test(v) &&
+                            v.length >= 4 && v.length <= 30) {
+                            out.username = v;
+                            break;
                         }
                     }
+
                     for (const v of vals) {
                         if (v === out.host || v === out.domain || v === out.username) continue;
-                        if (/^[a-zA-Z0-9!@#$%^&*_\-]{6,40}$/.test(v) && v.length >= 6 && v.length <= 40) {
-                            out.password = v; break;
+                        if (/^[a-zA-Z0-9!@#$%^&*_\-]{6,40}$/.test(v) &&
+                            v.length >= 6 && v.length <= 40) {
+                            out.password = v;
+                            break;
                         }
                     }
+
                     return out;
                 }
             """)
 
-            if data.get("host") and not result["host"]: result["host"] = data["host"]
-            if data.get("domain") and not result["domain"]: result["domain"] = data["domain"]
-            if data.get("username") and not result["username"]: result["username"] = data["username"]
-            if data.get("password") and not result["password"]: result["password"] = data["password"]
+            if data.get("host") and not result["host"]:
+                result["host"] = data["host"]
+            if data.get("domain") and not result["domain"]:
+                result["domain"] = data["domain"]
+            if data.get("username") and not result["username"]:
+                result["username"] = data["username"]
+            if data.get("password") and not result["password"]:
+                result["password"] = data["password"]
 
             if result["host"] and result["username"] and result["password"]:
                 break
+
             await page.wait_for_timeout(2000)
 
         return result
+
+    # ═══════════════════════════════════════
+    # استخراج Link TLS
+    # ═══════════════════════════════════════
 
     async def _extract_link_tls(self, page) -> str:
         for attempt in range(30):
             link = await page.evaluate(r"""
                 () => {
                     const labels = document.querySelectorAll('*');
+
                     for (const el of labels) {
                         const txt = (el.innerText || el.textContent || '').trim();
                         if (txt === 'Link TLS' || txt === 'Link TLS:') {
@@ -379,6 +456,7 @@ class SSHS8:
                             }
                         }
                     }
+
                     const allInputs = document.querySelectorAll('input, textarea');
                     for (const inp of allInputs) {
                         const val = (inp.value || inp.textContent || '').trim();
@@ -392,6 +470,7 @@ class SSHS8:
                             }
                         }
                     }
+
                     for (const inp of allInputs) {
                         const val = (inp.value || inp.textContent || '').trim();
                         if (val && val.length > 30 && !val.toLowerCase().includes('copy')) {
@@ -400,13 +479,21 @@ class SSHS8:
                             }
                         }
                     }
+
                     return null;
                 }
             """)
+
             if link:
                 return link.strip()
+
             await page.wait_for_timeout(2000)
+
         return None
+
+    # ═══════════════════════════════════════
+    # فك base64
+    # ═══════════════════════════════════════
 
     def _decode_vmess_link(self, link: str) -> dict:
         try:
@@ -418,6 +505,7 @@ class SSHS8:
                 b64 = link.strip()
 
             b64 += "=" * ((4 - len(b64) % 4) % 4)
+
             try:
                 decoded = base64.b64decode(b64).decode("utf-8")
             except Exception:
@@ -427,6 +515,7 @@ class SSHS8:
                 return json.loads(decoded)
             except Exception:
                 return None
+
         except Exception as e:
             log.error(f"❌ _decode_vmess_link: {e}")
             return None
@@ -440,8 +529,11 @@ class SSHS8:
             host = parsed.hostname or ""
             port = parsed.port or 443
             params = parse_qs(parsed.query)
+
             return {
-                "id": uuid, "add": host, "port": port,
+                "id": uuid,
+                "add": host,
+                "port": port,
                 "net": params.get("type", ["ws"])[0],
                 "path": unquote(params.get("path", ["/vless/"])[0]),
                 "host": params.get("host", ["googlevideo.com"])[0],
