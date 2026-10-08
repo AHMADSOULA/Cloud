@@ -22,7 +22,7 @@ log = get_logger("SSHS8")
 SSH_COUNTRIES = [
     {"name": "France", "flag": "🇫🇷", "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/113"},
     {"name": "Germany", "flag": "🇩🇪", "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/105"},
-    {"name": "Netherlands", "flag": "🇳🇱", "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/236"},
+    {"name": "Netherlands", "flag": "🇳🇱", "url": "https://vpneurope.sshs8.com/accounts/SSH_WEBSOCKET/245"},
     {"name": "USA", "flag": "🇺🇸", "url": "https://vpnnamerica.sshs8.com/accounts/SSH_WEBSOCKET/58"},
 ]
 
