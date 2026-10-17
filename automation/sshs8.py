@@ -1,63 +1,46 @@
 """
 automation/sshs8.py
-- كيدير SSH بنفس طريقة ضغطات المستخدم
+- أتمتة موقع sshs8.com
+- تصليح مشاكل الضغط (force click) + تخطي إعلانات
+- تصوير فـ كل خطوة
 """
 import asyncio
 import random
 import string
-import re
 import os
-import base64
-import json
 from utils.logger import get_logger
-from utils.recorder import BrowserRecorder
 
 log = get_logger("SSHS8")
-
-
 BASE_URL = "https://sshs8.com"
 
-
 def generate_password():
-    chars = string.ascii_letters + string.digits
-    return "".join(random.choices(chars, k=10))
-
+    return "".join(random.choices(string.ascii_letters + string.digits, k=10))
 
 class SSHS8:
-    def __init__(self, context, sender=None, user_tag="@user"):
+    def __init__(self, context, bot=None, chat_id=None):
         self.context = context
-        self.sender = sender
-        self.user_tag = user_tag or "@user"
         self.page = None
-        self.chat_id = None
-        self.bot = None
-        self.recorder = BrowserRecorder(context)
-
-    def set_chat(self, chat_id):
-        self.chat_id = chat_id
-
-    def set_bot(self, bot):
         self.bot = bot
-        if self.chat_id:
-            self.recorder.set_bot(bot, self.chat_id)
+        self.chat_id = chat_id
+        self.counter = 0
 
-    # ═══════════════════════════════════════
-    # Helpers
-    # ═══════════════════════════════════════
-
-    async def _shot(self, name: str):
-        """screenshot عند أي خطوة"""
-        if not self.page:
+    async def _screenshot(self, name: str):
+        if not self.page or not self.bot or not self.chat_id:
             return
         try:
-            path = f"/tmp/step_{name}_{int(asyncio.get_event_loop().time()*1000)}.png"
+            self.counter += 1
+            path = f"/tmp/shot_{self.counter}_{int(asyncio.get_event_loop().time()*1000)}.png"
             await self.page.screenshot(path=path, full_page=False, timeout=10000)
-            log.info(f"📸 {name}")
-        except Exception:
-            pass
+            with open(path, "rb") as f:
+                try:
+                    await self.bot.send_photo(chat_id=self.chat_id, photo=f, caption=f"📸 {name}")
+                except Exception: pass
+            try: os.remove(path)
+            except: pass
+        except Exception: pass
 
     async def _close_ads(self):
-        """يغلق الإعلانات"""
+        """إغلاق الإعلانات وحذف الـ Overlays"""
         try:
             await self.page.evaluate("""
                 () => {
@@ -65,247 +48,126 @@ class SSHS8:
                         if(f.src && (f.src.includes('ads') || f.src.includes('google') || f.src.includes('doubleclick') || f.src.includes('fluid'))) f.remove();
                     });
                     document.querySelectorAll('[class*="popup"], [class*="modal"], [class*="overlay"]').forEach(el => {
-                        try {
-                            const s = window.getComputedStyle(el);
-                            if (s.zIndex > 100 || s.position === 'fixed') el.remove();
-                        } catch(e) {}
+                        try { if (window.getComputedStyle(el).zIndex > 100) el.remove(); } catch(e) {}
                     });
                 }
             """)
             await self.page.wait_for_timeout(500)
-        except Exception:
-            pass
+        except Exception: pass
 
     async def _click(self, selector: str, desc: str = ""):
-        """click + force"""
+        """تصليح الضغط بـ force=True"""
         try:
+            await self._close_ads()
             el = self.page.locator(selector).first
             if await el.count() > 0:
                 await el.click(timeout=5000, force=True)
-                await self.page.wait_for_timeout(2000)
-                log.info(f"✅ click: {desc or selector[:30]}")
+                await self.page.wait_for_timeout(2500)
                 return True
-            return False
-        except Exception as e:
-            log.warning(f"⚠️ click: {e}")
-            return False
-
-    # ═══════════════════════════════════════
-    # Workflow
-    # ═══════════════════════════════════════
+        except Exception: pass
+        return False
 
     async def open_home(self) -> bool:
-        log.info(f"🌐 فتح: {BASE_URL}")
         self.page = await self.context.new_page()
         try:
             await self.page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60000)
             await self.page.wait_for_timeout(4000)
-
-            # Cloudflare
-            title = await self.page.title()
-            if "just a moment" in title.lower() or "cloudflare" in title.lower():
-                for i in range(30):
-                    await self.page.wait_for_timeout(2000)
-                    title = await self.page.title()
-                    if "just a moment" not in title.lower():
-                        break
-
             await self._close_ads()
-            await self._shot("home")
+            await self._screenshot("1. Home Page")
             return True
-        except Exception as e:
-            log.error(f"❌ open_home: {e}")
-            return False
+        except Exception: return False
 
-    async def click_ssh_protocol(self) -> list:
-        """يضغط على SSH Websocket من الشريط"""
-        await self._close_ads()
-        await self._click('a:has-text("SSH Websocket")', "SSH Websocket")
-        await self.page.wait_for_timeout(4000)
-        await self._shot("ssh_page")
-
-        continents = await self.page.evaluate(r"""
+    async def open_protocol(self, proto_name: str) -> list:
+        await self._click(f'a:has-text("{proto_name}")', proto_name)
+        await self.page.wait_for_timeout(3000)
+        await self._screenshot(f"2. Protocol: {proto_name}")
+        
+        return await self.page.evaluate(r"""
             () => {
                 const out = [];
-                const keywords = ["أوروبا", "آسيا", "أمريكا الشمالية", "أمريكا الجنوبية", "أفريقيا", "Europe", "Asia", "North America", "South America", "Africa"];
+                const kw = ["أوروبا", "آسيا", "أمريكا الشمالية", "أمريكا الجنوبية", "أفريقيا", "Europe", "Asia", "North America", "South America", "Africa"];
                 document.querySelectorAll('a').forEach(a => {
                     const t = (a.innerText || '').trim();
-                    for (const kw of keywords) {
-                        if (t.includes(kw) && !out.find(x => x.name === kw)) {
-                            out.push({ name: kw, href: a.href || '' });
-                            break;
-                        }
+                    for (const k of kw) {
+                        if (t.includes(k) && !out.find(x => x.name === k)) out.push({ name: k });
                     }
                 });
                 return out;
             }
         """)
-        log.info(f"🌍 Continents: {len(continents)}")
-        return continents
 
-    async def click_continent(self, continent_name: str) -> list:
-        """يضغط على القارة → الدول"""
-        await self._close_ads()
-        await self._click(f'a:has-text("{continent_name}")', continent_name)
-        await self.page.wait_for_timeout(4000)
-        await self._shot(f"continent_{continent_name.replace(' ','_')}")
-
-        countries = await self.page.evaluate(r"""
-            () => {
-                const out = [];
-                const exclude = ["Menu", "Home", "About", "Close", "Open", "SSH Websocket", "SSH Dropbear", "SSH STunnel", "SSH Tunnel", "OpenVPN", "V2Ray VLESS", "V2Ray VMESS", "WireGuard"];
-                document.querySelectorAll('h2, h3, h4, strong').forEach(h => {
-                    const t = (h.innerText || '').trim();
-                    if (!t || t.length > 60) return;
-                    if (exclude.includes(t)) return;
-                    if (!out.find(x => x.name === t)) out.push({ name: t, href: '' });
-                });
-                return out;
-            }
-        """)
-        log.info(f"🌍 Countries: {len(countries)}")
-        return countries
-
-    async def click_country(self, country_name: str) -> list:
-        """يضغط على الدولة → الخوادم"""
-        await self._close_ads()
-        await self._click(f'text="{country_name}"', country_name)
-        await self.page.wait_for_timeout(4000)
-        await self._shot(f"country_{country_name.replace(' ','_')}")
-
-        # ✅ نضغطو "قائمة الخوادم"
-        await self._click('text="قائمة الخوادم"', "قائمة الخوادم")
+    async def open_continent(self, cont_name: str) -> list:
+        await self._click(f'a:has-text("{cont_name}")', cont_name)
         await self.page.wait_for_timeout(3000)
+        await self._screenshot(f"3. Continent: {cont_name}")
 
-        servers = await self.page.evaluate(r"""
+        return await self.page.evaluate(r"""
             () => {
                 const out = [];
-                document.querySelectorAll('[class*="card"], article').forEach(card => {
-                    const txt = (card.innerText || '');
-                    const match = txt.match(/E\d{2,3}/);
-                    if (!match) return;
-                    const btns = Array.from(card.querySelectorAll('a, button'));
-                    const createBtn = btns.find(b => (b.innerText || '').includes('إنشاء') || (b.innerText || '').toLowerCase().includes('create'));
-                    if (!createBtn) return;
-                    out.push({ id: match[0], href: createBtn.href || '' });
+                const exclude = ["Menu", "Home", "SSH Websocket", "V2Ray", "OpenVPN", "TROJAN"];
+                document.querySelectorAll('h2, h3, h4').forEach(h => {
+                    const t = (h.innerText || '').trim();
+                    if (t && t.length < 50 && !exclude.includes(t) && !out.find(x => x.name === t)) out.push({ name: t });
                 });
                 return out;
             }
         """)
-        log.info(f"🖥️ Servers: {len(servers)}")
-        return servers
 
-    async def create_account(self, server_href: str) -> dict:
-        """ينشئ الحساب فـ الخادم"""
+    async def open_country(self, country_name: str) -> list:
+        await self._click(f'text="{country_name}"', country_name)
+        await self.page.wait_for_timeout(3000)
+        await self._click('text="قائمة الخوادم"')
+        await self.page.wait_for_timeout(2000)
+        await self._screenshot(f"4. Country: {country_name}")
+
+        return await self.page.evaluate(r"""
+            () => {
+                const out = [];
+                document.querySelectorAll('[class*="card"]').forEach(card => {
+                    const m = (card.innerText || '').match(/E\d{2,3}/);
+                    if (!m) return;
+                    const btn = Array.from(card.querySelectorAll('a, button')).find(b => b.innerText.includes('إنشاء') || b.innerText.includes('Create'));
+                    if (btn) out.push({ id: m[0], href: btn.href || '' });
+                });
+                return out;
+            }
+        """)
+
+    async def create_account(self, href: str) -> dict:
         password = generate_password()
-
         try:
-            await self.page.goto(server_href, wait_until="domcontentloaded", timeout=60000)
-            await self.page.wait_for_timeout(4000)
-            await self._close_ads()
-            await self._shot("server_page")
-
-            # ✅ username
-            for sel in ['input[name*="user" i]', 'input[type="text"]', 'input[name="username"]']:
-                try:
-                    el = self.page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        val = await el.input_value()
-                        if not val:
-                            await el.fill(f"u{random.randint(100000000, 999999999)}")
-                        break
-                except Exception:
-                    continue
-
-            # ✅ password
-            for sel in ['input[type="password"]', 'input[name*="pass" i]']:
-                try:
-                    el = self.page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.fill(password)
-                        break
-                except Exception:
-                    continue
-
-            # ✅ Create
-            await self.page.wait_for_timeout(500)
-            url_before = self.page.url
-
-            for sel in ['button:has-text("إنشاء حساب")', 'button:has-text("Create account")', 'button:has-text("Create")', 'input[type="submit"]']:
-                if await self._click(sel, "Create"):
-                    break
-
-            # ✅ نستناو
-            for i in range(20):
-                await self.page.wait_for_timeout(1000)
-                if self.page.url != url_before:
-                    break
-
+            await self.page.goto(href, wait_until="domcontentloaded", timeout=60000)
             await self.page.wait_for_timeout(3000)
             await self._close_ads()
-            await self._shot("after_create")
+            await self._screenshot("5. Server Page")
 
-            # ✅ نستخرجو
-            return await self._extract(page, password)
+            for sel in ['input[name*="user" i]', 'input[type="password"]']:
+                el = self.page.locator(sel).first
+                if await el.count() > 0:
+                    await el.fill(password if 'pass' in sel else f"u{random.randint(1000,9999)}")
 
-        except Exception as e:
-            log.error(f"❌ create: {e}")
-            return {"success": False, "message": str(e)[:200]}
+            await self._click('button:has-text("إنشاء حساب")')
+            await self.page.wait_for_timeout(5000)
+            await self._screenshot("6. Account Created")
 
-    async def _extract(self, page, fallback_pass: str) -> dict:
-        result = {
-            "success": False,
-            "host": None,
-            "username": None,
-            "password": fallback_pass,
-            "message": None,
-        }
-
-        for attempt in range(30):
-            data = await page.evaluate(r"""
+            data = await self.page.evaluate(r"""
                 () => {
-                    const out = { values: [], host: null, user: null };
+                    const out = { ip: null, user: null, link: null };
                     document.querySelectorAll('input, textarea').forEach(inp => {
-                        const v = (inp.value || inp.textContent || '').trim();
-                        if (!v || v.toLowerCase() === 'copy') return;
-                        out.values.push(v);
+                        const v = (inp.value || '').trim();
+                        if (/^\d+\.\d+\.\d+\.\d+$/.test(v)) out.ip = v;
+                        else if (v.startsWith('vmess://') || v.startsWith('vless://') || v.startsWith('trojan://')) out.link = v;
                     });
-                    // IPv4
-                    for (const v of out.values) {
-                        if (/^(\d{1,3}\.){3}\d{1,3}$/.test(v)) {
-                            const parts = v.split('.').map(Number);
-                            if (parts.every(p => p >= 0 && p <= 255) && !v.startsWith('192.168.') && !v.startsWith('10.')) {
-                                out.host = v; break;
-                            }
-                        }
-                    }
-                    // Username
-                    for (const v of out.values) {
-                        if (v === out.host) continue;
-                        if (/^[a-z0-9_\-]{4,30}$/i.test(v) && !/^\d+$/.test(v)) {
-                            out.user = v; break;
-                        }
-                    }
                     return out;
                 }
             """)
-
-            if data.get("host") and not result["host"]:
-                result["host"] = data["host"]
-            if data.get("user") and not result["username"]:
-                result["username"] = data["user"]
-
-            if result["host"] and result["username"]:
-                result["success"] = True
-                break
-
-            await page.wait_for_timeout(1500)
-
-        return result
+            data["password"] = password
+            data["success"] = True
+            return data
+        except Exception as e:
+            return {"success": False, "message": str(e)}
 
     async def close(self):
-        try:
-            if self.page:
-                await self.page.close()
-        except Exception:
-            pass
+        if self.page:
+            try: await self.page.close()
+            except: pass
