@@ -15,12 +15,21 @@ def main_menu(is_admin=False):
 
 
 def list_menu(items, prefix):
+    """يبني الأزرار مع الإيموجي (إذا كان موجود)"""
     rows = []
     for idx, item in enumerate(items):
-        name = item.get('name') if isinstance(item, dict) else item
-        # نزيدو الإيموجي ديال القارة/الدولة
-        emoji = "🌍" if prefix == "cont" else "🏳️"
-        rows.append([InlineKeyboardButton(f"{emoji} {name}", callback_data=f"{prefix}:{idx}")])
+        if isinstance(item, dict):
+            name = item.get('name', '')
+            emoji = item.get('emoji', '')
+            display = f"{emoji} {name}" if emoji else f"🌍 {name}"
+        else:
+            display = str(item)
+        
+        # ✅ تقصير الاسم باش يبان مزيان فـ الزر
+        if len(display) > 60:
+            display = display[:57] + "..."
+            
+        rows.append([InlineKeyboardButton(display, callback_data=f"{prefix}:{idx}")])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
 
