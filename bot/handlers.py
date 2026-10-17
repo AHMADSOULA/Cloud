@@ -3,6 +3,7 @@ import io
 import base64
 import json
 import re
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -111,25 +112,26 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "skills.google" not in sso_url and "qwiklabs" not in sso_url:
         return await update.message.reply_text("⚠️ الرابط ماشي من Google Skills.")
 
-    # ✅ رسالة وحدة فقط
-    msg = await update.message.reply_text("⏳ انتظر دقيقتين لكمال العملية...")
+    # ✅ رسالة وحدة كتبدل
+    msg = await update.message.reply_text("⏳ انتظر 2 دقائق لكمال العملية...")
     browser = StealthBrowser()
     
     try:
         ctx = await browser.start()
-        result = await run_sso_flow(ctx, sso_url, image=config.DEFAULT_IMAGE, sender=None, user_tag=user.username or "admin")
+        result = await run_sso_flow(ctx, sso_url, image=config.DEFAULT_IMAGE, sender=msg, user_tag=user.username or "admin")
         
-        # ✅ كشف الحساب المحذوف
+        # ✅ كشف الحساب المحذوف أو المشكل
         if not result.get("success"):
             error_msg = result.get("message", "")
+            error_code = result.get("error", "")
             
-            # ✅ إذا كان الحساب محذوف أو مغلق
-            if "account_deleted" in result.get("error", "") or "deleted" in error_msg.lower() or "محذوف" in error_msg:
-                # ✅ نصورو ونبعثو
+            # ✅ إلا كان الحساب محذوف أو مغلق
+            if error_code == "account_deleted" or "محذوف" in error_msg or "مغلق" in error_msg:
                 try:
-                    from automation.browser import StealthBrowser
+                    page = None
                     if ctx.pages:
                         page = ctx.pages[0]
+                    if page:
                         path = "/tmp/account_deleted.png"
                         await page.screenshot(path=path)
                         with open(path, "rb") as f:
@@ -137,7 +139,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 photo=f,
                                 caption="❌ الحساب محذوف أو تم إغلاقه."
                             )
-                        import os
                         os.remove(path)
                 except Exception:
                     await update.message.reply_text("❌ الحساب محذوف أو تم إغلاقه.")
@@ -159,8 +160,11 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bio.name = filename
             await context.bot.send_document(chat_id=update.effective_chat.id, document=bio, filename=filename)
         
-        # ✅ بعد ما كملنا نمسحو رسالة الانتظار
-        await msg.delete()
+        # ✅ نمسحو رسالة الانتظار
+        try:
+            await msg.delete()
+        except Exception:
+            pass
         
     except Exception as e:
         await msg.edit_text(f"❌ خطأ: {e}")
@@ -169,7 +173,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# ADMIN - تحويل SSH (بلا دخول للموقع)
+# ADMIN - تحويل SSH
 # ═══════════════════════════════════════════
 
 async def admin_panel(query, context):
@@ -184,14 +188,13 @@ async def ask_for_ssh_conversion(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
     context.user_data["await_convert_ssh"] = True
     
+    # ✅ بلا parse_mode باش ما يوقعش خطأ
     await query.message.edit_text(
-        "🔐 *تحويل SSH*\n\n"
+        "🔐 تحويل SSH\n\n"
         "أرسل المعلومات بالشكل التالي:\n"
-        "`IP:Port@User:Pass`\n\n"
+        "IP:Port@User:Pass\n\n"
         "مثال:\n"
-        "`152.228.162.19:22@u1595199941:U6CqrexXyK`",
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True
+        "152.228.162.19:22@u1595199941:U6CqrexXyK"
     )
 
 async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -202,7 +205,6 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
     context.user_data.pop("await_convert_ssh", None)
     
     try:
-        # ✅ تحليل الشكل: IP:Port@User:Pass
         parts = text.split("@")
         if len(parts) != 2:
             raise ValueError("تأكد من الشكل IP:Port@User:Pass")
@@ -222,7 +224,6 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
         user = user_pass[0]
         password = user_pass[1]
         
-        # ✅ بناء الملف
         uri = build_ssh_dark(host, user, password, kind="youtube")
         
         if not uri:
@@ -232,25 +233,24 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
         bio = io.BytesIO(uri.encode())
         bio.name = filename
         
+        # ✅ بلا parse_mode
         await update.message.reply_document(
             document=bio,
             filename=filename,
             caption=(
-                f"✅ *تم التحويل!*\n\n"
-                f"🖥️ Host: `{host}`\n"
-                f"🔌 Port: `{port}`\n"
-                f"👤 User: `{user}`\n"
-                f"🔑 Pass: `{password}`\n\n"
+                f"✅ تم التحويل!\n\n"
+                f"🖥️ Host: {host}\n"
+                f"🔌 Port: {port}\n"
+                f"👤 User: {user}\n"
+                f"🔑 Pass: {password}\n\n"
                 f"📁 {filename}"
-            ),
-            parse_mode=ParseMode.MARKDOWN
+            )
         )
         
     except Exception as e:
         await update.message.reply_text(
             f"❌ خطأ: {e}\n\n"
-            f"تأكد من الشكل: `IP:Port@User:Pass`",
-            parse_mode=ParseMode.MARKDOWN
+            f"تأكد من الشكل: IP:Port@User:Pass"
         )
         
     return True
@@ -263,52 +263,52 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
 async def admin_stats(query):
     users = await db.get_all_users()
     active = await db.get_active_users()
-    text = f"📊 *إحصائيات*\n\n👥 {len(users)}\n✅ {len(active)}\n"
-    await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
+    text = f"📊 إحصائيات\n\n👥 {len(users)}\n✅ {len(active)}\n"
+    await query.message.edit_text(text, reply_markup=admin_menu())
 
 async def admin_users(query):
     users = await db.get_all_users()
-    lines = ["👥 *المستخدمين:*\n"]
+    lines = ["👥 المستخدمين:\n"]
     for u in users[:30]:
         emoji = "🚫" if u.get("banned") else ("✅" if u.get("access") else "⏳")
-        lines.append(f"{emoji} `{u['user_id']}` — {u.get('username') or '-'}")
-    await query.message.edit_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
+        lines.append(f"{emoji} {u['user_id']} — {u.get('username') or '-'}")
+    await query.message.edit_text("\n".join(lines), reply_markup=admin_menu())
 
 async def admin_banned(query):
     banned = await db.get_banned_users()
-    text = "🚫 لا محظورين" if not banned else "\n".join([f"`{u['user_id']}`" for u in banned])
-    await query.message.edit_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
+    text = "🚫 لا محظورين" if not banned else "\n".join([f"{u['user_id']}" for u in banned])
+    await query.message.edit_text(text, reply_markup=admin_menu())
 
 async def admin_requests(query):
     await query.message.edit_text("📋 طلبات", reply_markup=admin_menu())
 
 async def admin_priority(query, context):
     context.user_data["await"] = "priority"
-    await query.message.edit_text("⚡ أرسل ID:", parse_mode=ParseMode.MARKDOWN)
+    await query.message.edit_text("⚡ أرسل ID:")
 
 async def admin_ban(query, context):
     context.user_data["await"] = "ban"
-    await query.message.edit_text("🔨 أرسل ID:", parse_mode=ParseMode.MARKDOWN)
+    await query.message.edit_text("🔨 أرسل ID:")
 
 async def admin_grant(query, context):
     context.user_data["await"] = "grant"
-    await query.message.edit_text("✅ أرسل ID:", parse_mode=ParseMode.MARKDOWN)
+    await query.message.edit_text("✅ أرسل ID:")
 
 async def admin_pause(query, context):
     context.user_data["await"] = "pause"
-    await query.message.edit_text("⏸️ أرسل ID:", parse_mode=ParseMode.MARKDOWN)
+    await query.message.edit_text("⏸️ أرسل ID:")
 
 async def admin_broadcast(query, context):
     context.user_data["await"] = "broadcast"
-    await query.message.edit_text("📢 أرسل الرسالة:", parse_mode=ParseMode.MARKDOWN)
+    await query.message.edit_text("📢 أرسل الرسالة:")
 
 async def admin_stop_all(query):
     await db.set_global_stop(True)
-    await query.message.edit_text("⛔ إيقاف للجميع", parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
+    await query.message.edit_text("⛔ إيقاف للجميع", reply_markup=admin_menu())
 
 async def admin_start_all(query):
     await db.set_global_stop(False)
-    await query.message.edit_text("▶️ تشغيل للجميع", parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
+    await query.message.edit_text("▶️ تشغيل للجميع", reply_markup=admin_menu())
 
 
 # ═══════════════════════════════════════════
@@ -330,22 +330,22 @@ async def handle_admin_input(update, context, text):
         if mode == "grant":
             uid = int(text)
             await db.set_access(uid, 1)
-            await update.message.reply_text(f"✅ تم تفعيل `{uid}`")
+            await update.message.reply_text(f"✅ تم تفعيل {uid}")
         elif mode == "ban":
             uid = int(text)
             await db.set_ban(uid, 1)
-            await update.message.reply_text(f"🚫 تم حظر `{uid}`")
+            await update.message.reply_text(f"🚫 تم حظر {uid}")
         elif mode == "priority":
             uid = int(text)
             await db.set_priority(uid, 100)
-            await update.message.reply_text(f"⚡ تم زيادة `{uid}`")
+            await update.message.reply_text(f"⚡ تم زيادة {uid}")
         elif mode == "pause":
             uid = int(text)
             u = await db.get_user(uid)
             if u:
                 new_val = 0 if u.get("access") else 1
                 await db.set_access(uid, new_val)
-                await update.message.reply_text(f"⏸️ تم تبديل `{uid}`")
+                await update.message.reply_text(f"⏸️ تم تبديل {uid}")
         elif mode == "broadcast":
             users = await db.get_all_users()
             sent = 0
