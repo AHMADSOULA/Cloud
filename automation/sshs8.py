@@ -1,6 +1,7 @@
 """
 automation/sshs8.py
 - يستكشف الموقع: Menu → Protocol → Continent → Country → Random Server
+- مع تخطي الإعلانات
 - Screenshot عند أي مشكل
 """
 import asyncio
@@ -57,24 +58,19 @@ class SSHS8:
         self.chat_id = chat_id
 
     # ═══════════════════════════════════════
-    # Screenshot helper
+    # Screenshot + Fail
     # ═══════════════════════════════════════
 
     async def _screenshot(self, caption: str = "❌ خطأ"):
-        """يصوّر الصفحة ويبعثها"""
         if not self.page or not self.bot or not self.chat_id:
             return
         try:
             self.screenshot_counter += 1
-            path = f"/tmp/sshs8_error_{self.screenshot_counter}_{int(asyncio.get_event_loop().time()*1000)}.png"
+            path = f"/tmp/sshs8_{self.screenshot_counter}_{int(asyncio.get_event_loop().time()*1000)}.png"
             await self.page.screenshot(path=path, full_page=False, timeout=10000)
             with open(path, "rb") as f:
                 try:
-                    await self.bot.send_photo(
-                        chat_id=self.chat_id,
-                        photo=f,
-                        caption=caption[:1000],
-                    )
+                    await self.bot.send_photo(chat_id=self.chat_id, photo=f, caption=caption[:1000])
                 except Exception as e:
                     log.warning(f"⚠️ send_photo: {e}")
             try:
@@ -85,10 +81,35 @@ class SSHS8:
             log.warning(f"⚠️ screenshot: {e}")
 
     async def _fail(self, message: str) -> dict:
-        """يصوّر ويوقف"""
         log.warning(f"❌ {message}")
         await self._screenshot(f"❌ {message}")
         return {"success": False, "message": message}
+
+    # ═══════════════════════════════════════
+    # إغلاق الإعلانات
+    # ═══════════════════════════════════════
+
+    async def _close_ads(self, page):
+        """يغلق الإعلانات المزعجة"""
+        for sel in [
+            'text="Close"', 'text="إغلاق"', 'text="×"', 'text="✕"',
+            'button:has-text("Close")', 'button:has-text("إغلاق")',
+            '[class*="close"]', '[aria-label*="close" i]',
+            'a:has-text("Close")',
+            '.close, .close-ad, [class*="popup"] [class*="close"]',
+            'svg[class*="close"]', 'div[class*="close"]',
+        ]:
+            try:
+                els = page.locator(sel)
+                count = await els.count()
+                for i in range(min(count, 5)):
+                    el = els.nth(i)
+                    if await el.is_visible():
+                        await el.click(timeout=2000)
+                        await page.wait_for_timeout(1000)
+                        log.info(f"✅ Ad closed via {sel}")
+            except Exception:
+                continue
 
     # ═══════════════════════════════════════
     # 1. فتح الموقع
@@ -102,11 +123,9 @@ class SSHS8:
             await self.page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60000)
             await self.page.wait_for_timeout(4000)
 
-            # ✅ نتحققو من Cloudflare
+            # ✅ Cloudflare
             title = await self.page.title()
             if "just a moment" in title.lower() or "cloudflare" in title.lower():
-                log.warning("⚠️ Cloudflare detected")
-                # ✅ نستناو شوية
                 for i in range(30):
                     await self.page.wait_for_timeout(2000)
                     title = await self.page.title()
@@ -117,6 +136,7 @@ class SSHS8:
                     await self._screenshot("❌ Cloudflare ما تجاوزناش")
                     return False
 
+            await self._close_ads(self.page)
             return True
         except Exception as e:
             log.error(f"❌ open_home: {e}", exc_info=True)
@@ -130,47 +150,17 @@ class SSHS8:
     async def get_protocols(self) -> list:
         page = self.page
         try:
-            # ✅ نضغطو Menu
-            menu_clicked = False
-            for sel in [
-                'button:has-text("Menu")',
-                'text="Menu"',
-                'a:has-text("Menu")',
-                '[class*="menu-toggle"]',
-                '[class*="hamburger"]',
-                'button[aria-label*="menu" i]',
-            ]:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.click(timeout=3000)
-                        await page.wait_for_timeout(2000)
-                        menu_clicked = True
-                        log.info(f"✅ Menu clicked via {sel}")
-                        break
-                except Exception:
-                    continue
+            await page.wait_for_timeout(2000)
 
-            if not menu_clicked:
-                # نصورو ونوقفو
-                await self._screenshot("⚠️ ما لقيناش زر Menu")
-                # نجربو نكملو
-
-            # ✅ نستخرجو البروتوكولات
+            # ✅ نقرا من الشريط العلوي
             protocols = await page.evaluate(r"""
                 () => {
                     const out = [];
-                    const known = [
-                        "SSH Websocket", "SSH Dropbear", "SSH STunnel", "SSH Tunnel",
-                        "OpenVPN", "V2Ray VLESS", "V2Ray VMESS", "WireGuard",
-                        "Trojan Go VPN", "TROJAN", "ShadowSocksR", "ShadowSocks"
-                    ];
-
+                    const known = ["SSH Websocket", "SSH Dropbear", "SSH STunnel", "SSH Tunnel", "OpenVPN", "V2Ray VLESS", "V2Ray VMESS", "WireGuard", "Trojan Go VPN", "TROJAN", "ShadowSocksR", "ShadowSocks"];
                     const links = document.querySelectorAll('a');
                     for (const a of links) {
                         const t = (a.innerText || a.textContent || '').trim();
                         if (!t || t.length > 60) continue;
-
                         for (const proto of known) {
                             if (t.toLowerCase().includes(proto.toLowerCase()) && !out.find(x => x.name === proto)) {
                                 out.push({ name: proto, href: a.href || '' });
@@ -178,13 +168,43 @@ class SSHS8:
                             }
                         }
                     }
-
                     return out;
                 }
             """)
 
+            # ✅ إلا ما لقيناش — نضغطو Menu
             if not protocols:
-                await self._screenshot("⚠️ ما لقيناش بروتوكولات")
+                for sel in [
+                    'button:has-text("Menu")', 'text="Menu"',
+                    '[class*="menu-toggle"]', '[class*="hamburger"]',
+                ]:
+                    try:
+                        el = page.locator(sel).first
+                        if await el.count() > 0 and await el.is_visible():
+                            await el.click(timeout=3000)
+                            await page.wait_for_timeout(2000)
+                            break
+                    except Exception:
+                        continue
+
+                protocols = await page.evaluate(r"""
+                    () => {
+                        const out = [];
+                        const known = ["SSH Websocket", "SSH Dropbear", "SSH STunnel", "SSH Tunnel", "OpenVPN", "V2Ray VLESS", "V2Ray VMESS", "WireGuard", "Trojan Go VPN", "TROJAN", "ShadowSocksR", "ShadowSocks"];
+                        const links = document.querySelectorAll('a');
+                        for (const a of links) {
+                            const t = (a.innerText || a.textContent || '').trim();
+                            if (!t || t.length > 60) continue;
+                            for (const proto of known) {
+                                if (t.toLowerCase().includes(proto.toLowerCase()) && !out.find(x => x.name === proto)) {
+                                    out.push({ name: proto, href: a.href || '' });
+                                    break;
+                                }
+                            }
+                        }
+                        return out;
+                    }
+                """)
 
             log.info(f"📋 Protocols: {len(protocols)}")
             return protocols
@@ -195,13 +215,12 @@ class SSHS8:
             return []
 
     # ═══════════════════════════════════════
-    # 3. فتح بروتوكول → القارات
+    # 3. بروتوكول → القارات
     # ═══════════════════════════════════════
 
     async def open_protocol(self, protocol_name: str) -> list:
         page = self.page
         try:
-            # ✅ نضغطو
             clicked = False
             for sel in [
                 f'a:has-text("{protocol_name}")',
@@ -222,14 +241,12 @@ class SSHS8:
                 await self._screenshot(f"❌ ما لقيناش {protocol_name}")
                 return []
 
-            # ✅ نستخرجو القارات
+            await self._close_ads(page)
+
             continents = await page.evaluate(r"""
                 () => {
                     const out = [];
-                    const keywords = [
-                        "أوروبا", "آسيا", "أمريكا الشمالية", "أمريكا الجنوبية", "أفريقيا",
-                        "Europe", "Asia", "North America", "South America", "Africa"
-                    ];
+                    const keywords = ["أوروبا", "آسيا", "أمريكا الشمالية", "أمريكا الجنوبية", "أفريقيا", "Europe", "Asia", "North America", "South America", "Africa"];
                     const links = document.querySelectorAll('a');
                     for (const a of links) {
                         const t = (a.innerText || a.textContent || '').trim();
@@ -283,20 +300,25 @@ class SSHS8:
                 await self._screenshot(f"❌ ما لقيناش {continent_name}")
                 return []
 
+            await self._close_ads(page)
+
             countries = await page.evaluate(r"""
                 () => {
                     const out = [];
-                    const cards = document.querySelectorAll('[class*="card"], article, [class*="country"]');
-                    for (const card of cards) {
-                        const h = card.querySelector('h2, h3, h4, strong');
-                        if (!h) continue;
+                    const exclude = ["Menu", "Home", "About", "Close", "Open", "SSH Websocket", "SSH Dropbear", "SSH STunnel", "SSH Tunnel", "OpenVPN", "V2Ray VLESS", "V2Ray VMESS", "WireGuard", "Trojan Go VPN", "TROJAN", "ShadowSocksR", "ShadowSocks"];
+                    const headers = document.querySelectorAll('h2, h3, h4, strong');
+                    for (const h of headers) {
                         const name = (h.innerText || '').trim();
                         if (!name || name.length > 60) continue;
-                        const link = card.querySelector('a');
-                        const href = link ? link.href : '';
-                        if (!out.find(x => x.name === name)) {
-                            out.push({ name: name, href: href });
-                        }
+                        if (exclude.includes(name)) continue;
+                        if (!out.find(x => x.name === name)) out.push({ name: name, href: '' });
+                    }
+                    const links = document.querySelectorAll('a[href*="SSH"], a[href*="vless"], a[href*="vmess"], a[href*="trojan"]');
+                    for (const a of links) {
+                        const t = (a.innerText || '').trim();
+                        if (!t || t.length > 60 || t.length < 3) continue;
+                        if (exclude.includes(t)) continue;
+                        if (!out.find(x => x.name === t)) out.push({ name: t, href: a.href || '' });
                     }
                     return out;
                 }
@@ -340,7 +362,9 @@ class SSHS8:
                 await self._screenshot(f"❌ ما لقيناش {country_name}")
                 return []
 
-            # ✅ نضغطو "قائمة الخوادم" إلا كان
+            await self._close_ads(page)
+
+            # ✅ نضغطو "قائمة الخوادم"
             for sel in [
                 'text="قائمة الخوادم"',
                 'a:has-text("قائمة الخوادم")',
@@ -353,12 +377,10 @@ class SSHS8:
                     if await el.count() > 0 and await el.is_visible():
                         await el.click()
                         await page.wait_for_timeout(3000)
-                        log.info(f"✅ Server list opened")
                         break
                 except Exception:
                     continue
 
-            # ✅ نستخرجو الخوادم
             servers = await page.evaluate(r"""
                 () => {
                     const out = [];
@@ -367,18 +389,15 @@ class SSHS8:
                         const text = (card.innerText || '');
                         const match = text.match(/E\d{2,3}/);
                         if (!match) continue;
-
-                        const btn = card.querySelector('a, button');
-                        if (!btn) continue;
-
-                        // نلقاو رابط إنشاء حساب
-                        const createBtn = Array.from(card.querySelectorAll('a, button')).find(b =>
-                            (b.innerText || '').includes('إنشاء') || (b.innerText || '').toLowerCase().includes('create')
+                        const btns = Array.from(card.querySelectorAll('a, button'));
+                        const createBtn = btns.find(b =>
+                            (b.innerText || '').includes('إنشاء') ||
+                            (b.innerText || '').toLowerCase().includes('create')
                         );
-
+                        if (!createBtn) continue;
                         out.push({
                             id: match[0],
-                            href: (createBtn ? createBtn.href : btn.href) || '',
+                            href: createBtn.href || '',
                             text: text.trim().substring(0, 100),
                         });
                     }
@@ -412,7 +431,9 @@ class SSHS8:
             await page.goto(server_href, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(4000)
 
-            # ✅ نعبيو username
+            await self._close_ads(page)
+
+            # ✅ username
             for sel in ['input[name*="user" i]', 'input[type="text"]', 'input[name="username"]']:
                 try:
                     el = page.locator(sel).first
@@ -424,7 +445,7 @@ class SSHS8:
                 except Exception:
                     continue
 
-            # ✅ نعبيو password
+            # ✅ password
             for sel in ['input[type="password"]', 'input[name*="pass" i]']:
                 try:
                     el = page.locator(sel).first
@@ -441,7 +462,7 @@ class SSHS8:
             await page.wait_for_timeout(500)
             url_before = page.url
 
-            # ✅ نضغطو Create
+            # ✅ Create
             for sel in [
                 'button:has-text("إنشاء حساب")',
                 'button:has-text("Create account")',
@@ -457,19 +478,18 @@ class SSHS8:
                 except Exception:
                     continue
 
-            # ✅ نستناو
             for i in range(30):
                 await page.wait_for_timeout(1000)
                 if page.url != url_before:
                     break
 
             await page.wait_for_timeout(3000)
+            await self._close_ads(page)
 
-            # ✅ نستخرجو
             return await self._extract_credentials(page, password_value)
 
         except Exception as e:
-            log.error(f"❌ create_account_from_server: {e}", exc_info=True)
+            log.error(f"❌ create: {e}", exc_info=True)
             return await self._fail(f"❌ create: {str(e)[:200]}")
 
     # ═══════════════════════════════════════
@@ -478,14 +498,8 @@ class SSHS8:
 
     async def _extract_credentials(self, page, fallback_password: str) -> dict:
         result = {
-            "success": False,
-            "host": None,
-            "domain": None,
-            "username": None,
-            "password": fallback_password,
-            "vmess_config": None,
-            "link_tls": None,
-            "message": None,
+            "success": False, "host": None, "domain": None, "username": None,
+            "password": fallback_password, "vmess_config": None, "link_tls": None, "message": None,
         }
 
         for attempt in range(40):
@@ -498,32 +512,21 @@ class SSHS8:
                         if (!val) continue;
                         if (val.toLowerCase() === 'copy') continue;
                         out.values.push(val);
-                        if (val.startsWith('vmess://') || val.startsWith('vless://') || val.startsWith('trojan://')) {
-                            out.link = val;
-                        }
+                        if (val.startsWith('vmess://') || val.startsWith('vless://') || val.startsWith('trojan://')) out.link = val;
                     }
                     for (const v of out.values) {
                         if (/^(\d{1,3}\.){3}\d{1,3}$/.test(v)) {
                             const parts = v.split('.').map(Number);
-                            if (parts.every(p => p >= 0 && p <= 255) && !v.startsWith('192.168.') && !v.startsWith('10.') && !v.startsWith('127.')) {
-                                out.ipv4 = v;
-                                break;
-                            }
+                            if (parts.every(p => p >= 0 && p <= 255) && !v.startsWith('192.168.') && !v.startsWith('10.') && !v.startsWith('127.')) { out.ipv4 = v; break; }
                         }
                     }
                     for (const v of out.values) {
                         if (v === out.ipv4) continue;
-                        if (/^[a-z0-9\-\.]+\.[a-z]{2,}$/i.test(v) && v.length < 60) {
-                            out.domain = v;
-                            break;
-                        }
+                        if (/^[a-z0-9\-\.]+\.[a-z]{2,}$/i.test(v) && v.length < 60) { out.domain = v; break; }
                     }
                     for (const v of out.values) {
                         if (v === out.ipv4 || v === out.domain) continue;
-                        if (/^[a-z0-9_\-]{4,30}$/i.test(v) && !/^\d+$/.test(v)) {
-                            out.user = v;
-                            break;
-                        }
+                        if (/^[a-z0-9_\-]{4,30}$/i.test(v) && !/^\d+$/.test(v)) { out.user = v; break; }
                     }
                     return out;
                 }
