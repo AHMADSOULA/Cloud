@@ -1,8 +1,7 @@
 """
 automation/sshs8.py
-- يستكشف الموقع: Menu → Protocol → Continent → Country → Random Server
-- مع تخطي الإعلانات
-- Screenshot عند أي مشكل
+- يتخطى الإعلانات (iframe + overlays + popups)
+- يستكشف الموقع: Menu → Protocol → Continent → Country
 """
 import asyncio
 import random
@@ -21,21 +20,13 @@ BASE_URL = "https://sshs8.com"
 # ✅ Payload موحد
 SSH_PAYLOAD = "CONNECT [host_port] HTTP/1.1[crlf]Host: youtubekids.com[crlf]X-Online-Host: youtubekids.com[crlf]Connection: Keep-Alive[crlf]User-Agent: Mozilla/5.0[crlf][crlf]"
 
-# ✅ SNI/WSHost موحد للـ VMESS/VLESS/Trojan
+# ✅ SNI/WSHost موحد
 V2RAY_SNI = "youtube.com"
 V2RAY_WS_HOST = "youtube.com"
 
 PAYLOADS = {
-    "youtube": {
-        "sni": V2RAY_SNI,
-        "ws_header_host": V2RAY_WS_HOST,
-        "payload": SSH_PAYLOAD,
-    },
-    "snapchat": {
-        "sni": V2RAY_SNI,
-        "ws_header_host": V2RAY_WS_HOST,
-        "payload": SSH_PAYLOAD,
-    },
+    "youtube": {"sni": V2RAY_SNI, "ws_header_host": V2RAY_WS_HOST, "payload": SSH_PAYLOAD},
+    "snapchat": {"sni": V2RAY_SNI, "ws_header_host": V2RAY_WS_HOST, "payload": SSH_PAYLOAD},
 }
 
 
@@ -58,7 +49,7 @@ class SSHS8:
         self.chat_id = chat_id
 
     # ═══════════════════════════════════════
-    # Screenshot + Fail
+    # Screenshot
     # ═══════════════════════════════════════
 
     async def _screenshot(self, caption: str = "❌ خطأ"):
@@ -86,30 +77,73 @@ class SSHS8:
         return {"success": False, "message": message}
 
     # ═══════════════════════════════════════
-    # إغلاق الإعلانات
+    # إغلاق الإعلانات (قوي جداً)
     # ═══════════════════════════════════════
 
     async def _close_ads(self, page):
-        """يغلق الإعلانات المزعجة"""
-        for sel in [
-            'text="Close"', 'text="إغلاق"', 'text="×"', 'text="✕"',
-            'button:has-text("Close")', 'button:has-text("إغلاق")',
-            '[class*="close"]', '[aria-label*="close" i]',
-            'a:has-text("Close")',
-            '.close, .close-ad, [class*="popup"] [class*="close"]',
-            'svg[class*="close"]', 'div[class*="close"]',
-        ]:
-            try:
-                els = page.locator(sel)
-                count = await els.count()
-                for i in range(min(count, 5)):
-                    el = els.nth(i)
-                    if await el.is_visible():
-                        await el.click(timeout=2000)
-                        await page.wait_for_timeout(1000)
-                        log.info(f"✅ Ad closed via {sel}")
-            except Exception:
-                continue
+        """يحذف الإعلانات والـ overlays"""
+        try:
+            # ✅ 1. نحذفو الـ iframes الإعلانية
+            await page.evaluate("""
+                () => {
+                    const iframes = document.querySelectorAll('iframe');
+                    for (const f of iframes) {
+                        if (f.src && (f.src.includes('google') || f.src.includes('ads') || f.src.includes('doubleclick') || f.src.includes('fluid') || f.src.includes('taboola') || f.src.includes('outbrain'))) {
+                            f.remove();
+                        }
+                    }
+                }
+            """)
+
+            # ✅ 2. نحذفو popups/overlays
+            await page.evaluate("""
+                () => {
+                    const selectors = [
+                        '[class*="popup"]', '[class*="modal"]', '[class*="overlay"]',
+                        '[id*="popup"]', '[id*="modal"]', '[id*="overlay"]',
+                        '[class*="ad-"]', '[class*="ads-"]', '[id*="ad-"]', '[id*="ads-"]',
+                        'div[style*="position: fixed"]', 'div[style*="position:fixed"]'
+                    ];
+                    for (const sel of selectors) {
+                        const els = document.querySelectorAll(sel);
+                        for (const el of els) {
+                            try {
+                                const style = window.getComputedStyle(el);
+                                if (style.zIndex > 100 || style.zIndex === 'auto') {
+                                    el.remove();
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+            """)
+
+            # ✅ 3. نضغطو Close/×
+            for sel in [
+                'text="Close"', 'text="إغلاق"', 'text="×"', 'text="✕"',
+                'button:has-text("Close")', 'button:has-text("إغلاق")',
+                '[class*="close"]', '[aria-label*="close" i]',
+                'a:has-text("Close")', 'span:has-text("×")',
+                '.close', '.close-ad', '.popup-close',
+            ]:
+                try:
+                    els = page.locator(sel)
+                    count = await els.count()
+                    for i in range(min(count, 5)):
+                        el = els.nth(i)
+                        try:
+                            if await el.is_visible():
+                                await el.click(timeout=1500, force=True)
+                                await page.wait_for_timeout(300)
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+
+            await page.wait_for_timeout(500)
+            log.info("✅ Ads closed")
+        except Exception as e:
+            log.warning(f"⚠️ _close_ads: {e}")
 
     # ═══════════════════════════════════════
     # 1. فتح الموقع
@@ -123,14 +157,13 @@ class SSHS8:
             await self.page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60000)
             await self.page.wait_for_timeout(4000)
 
-            # ✅ Cloudflare
             title = await self.page.title()
             if "just a moment" in title.lower() or "cloudflare" in title.lower():
                 for i in range(30):
                     await self.page.wait_for_timeout(2000)
                     title = await self.page.title()
                     if "just a moment" not in title.lower() and "cloudflare" not in title.lower():
-                        log.info(f"✅ Cloudflare passed after {(i+1)*2}s")
+                        log.info(f"✅ Cloudflare passed")
                         break
                 else:
                     await self._screenshot("❌ Cloudflare ما تجاوزناش")
@@ -150,9 +183,9 @@ class SSHS8:
     async def get_protocols(self) -> list:
         page = self.page
         try:
-            await page.wait_for_timeout(2000)
+            await self._close_ads(page)
+            await page.wait_for_timeout(1000)
 
-            # ✅ نقرا من الشريط العلوي
             protocols = await page.evaluate(r"""
                 () => {
                     const out = [];
@@ -172,46 +205,12 @@ class SSHS8:
                 }
             """)
 
-            # ✅ إلا ما لقيناش — نضغطو Menu
-            if not protocols:
-                for sel in [
-                    'button:has-text("Menu")', 'text="Menu"',
-                    '[class*="menu-toggle"]', '[class*="hamburger"]',
-                ]:
-                    try:
-                        el = page.locator(sel).first
-                        if await el.count() > 0 and await el.is_visible():
-                            await el.click(timeout=3000)
-                            await page.wait_for_timeout(2000)
-                            break
-                    except Exception:
-                        continue
-
-                protocols = await page.evaluate(r"""
-                    () => {
-                        const out = [];
-                        const known = ["SSH Websocket", "SSH Dropbear", "SSH STunnel", "SSH Tunnel", "OpenVPN", "V2Ray VLESS", "V2Ray VMESS", "WireGuard", "Trojan Go VPN", "TROJAN", "ShadowSocksR", "ShadowSocks"];
-                        const links = document.querySelectorAll('a');
-                        for (const a of links) {
-                            const t = (a.innerText || a.textContent || '').trim();
-                            if (!t || t.length > 60) continue;
-                            for (const proto of known) {
-                                if (t.toLowerCase().includes(proto.toLowerCase()) && !out.find(x => x.name === proto)) {
-                                    out.push({ name: proto, href: a.href || '' });
-                                    break;
-                                }
-                            }
-                        }
-                        return out;
-                    }
-                """)
-
             log.info(f"📋 Protocols: {len(protocols)}")
             return protocols
 
         except Exception as e:
             log.error(f"❌ get_protocols: {e}", exc_info=True)
-            await self._screenshot(f"❌ get_protocols: {str(e)[:200]}")
+            await self._screenshot(f"❌ get_protocols")
             return []
 
     # ═══════════════════════════════════════
@@ -221,16 +220,15 @@ class SSHS8:
     async def open_protocol(self, protocol_name: str) -> list:
         page = self.page
         try:
+            await self._close_ads(page)
+
             clicked = False
-            for sel in [
-                f'a:has-text("{protocol_name}")',
-                f'text="{protocol_name}"',
-            ]:
+            for sel in [f'a:has-text("{protocol_name}")', f'text="{protocol_name}"']:
                 try:
                     el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.click(timeout=5000)
-                        await page.wait_for_timeout(3000)
+                    if await el.count() > 0:
+                        await el.click(timeout=5000, force=True)
+                        await page.wait_for_timeout(4000)
                         clicked = True
                         log.info(f"✅ Protocol clicked: {protocol_name}")
                         break
@@ -264,13 +262,15 @@ class SSHS8:
 
             if not continents:
                 await self._screenshot(f"⚠️ ما لقيناش قارات لـ {protocol_name}")
+                links = await page.evaluate("Array.from(document.querySelectorAll('a')).map(a => a.innerText.trim()).filter(t => t.length > 0 && t.length < 60).slice(0, 30)")
+                log.warning(f"🔍 Links: {links}")
 
             log.info(f"🌍 Continents: {len(continents)}")
             return continents
 
         except Exception as e:
             log.error(f"❌ open_protocol: {e}", exc_info=True)
-            await self._screenshot(f"❌ open_protocol: {str(e)[:200]}")
+            await self._screenshot(f"❌ open_protocol")
             return []
 
     # ═══════════════════════════════════════
@@ -280,16 +280,15 @@ class SSHS8:
     async def open_continent(self, continent_name: str) -> list:
         page = self.page
         try:
+            await self._close_ads(page)
+
             clicked = False
-            for sel in [
-                f'a:has-text("{continent_name}")',
-                f'text="{continent_name}"',
-            ]:
+            for sel in [f'a:has-text("{continent_name}")', f'text="{continent_name}"']:
                 try:
                     el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.click(timeout=5000)
-                        await page.wait_for_timeout(3000)
+                    if await el.count() > 0:
+                        await el.click(timeout=5000, force=True)
+                        await page.wait_for_timeout(4000)
                         clicked = True
                         log.info(f"✅ Continent clicked: {continent_name}")
                         break
@@ -332,7 +331,7 @@ class SSHS8:
 
         except Exception as e:
             log.error(f"❌ open_continent: {e}", exc_info=True)
-            await self._screenshot(f"❌ open_continent: {str(e)[:200]}")
+            await self._screenshot(f"❌ open_continent")
             return []
 
     # ═══════════════════════════════════════
@@ -342,16 +341,15 @@ class SSHS8:
     async def open_country(self, country_name: str) -> list:
         page = self.page
         try:
+            await self._close_ads(page)
+
             clicked = False
-            for sel in [
-                f'text="{country_name}"',
-                f'a:has-text("{country_name}")',
-            ]:
+            for sel in [f'text="{country_name}"', f'a:has-text("{country_name}")']:
                 try:
                     el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.click(timeout=5000)
-                        await page.wait_for_timeout(3000)
+                    if await el.count() > 0:
+                        await el.click(timeout=5000, force=True)
+                        await page.wait_for_timeout(4000)
                         clicked = True
                         log.info(f"✅ Country clicked: {country_name}")
                         break
@@ -364,18 +362,11 @@ class SSHS8:
 
             await self._close_ads(page)
 
-            # ✅ نضغطو "قائمة الخوادم"
-            for sel in [
-                'text="قائمة الخوادم"',
-                'a:has-text("قائمة الخوادم")',
-                'button:has-text("قائمة الخوادم")',
-                'text="Server List"',
-                'a:has-text("Server List")',
-            ]:
+            for sel in ['text="قائمة الخوادم"', 'a:has-text("قائمة الخوادم")', 'button:has-text("قائمة الخوادم")', 'text="Server List"']:
                 try:
                     el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.click()
+                    if await el.count() > 0:
+                        await el.click(timeout=3000, force=True)
                         await page.wait_for_timeout(3000)
                         break
                 except Exception:
@@ -390,16 +381,9 @@ class SSHS8:
                         const match = text.match(/E\d{2,3}/);
                         if (!match) continue;
                         const btns = Array.from(card.querySelectorAll('a, button'));
-                        const createBtn = btns.find(b =>
-                            (b.innerText || '').includes('إنشاء') ||
-                            (b.innerText || '').toLowerCase().includes('create')
-                        );
+                        const createBtn = btns.find(b => (b.innerText || '').includes('إنشاء') || (b.innerText || '').toLowerCase().includes('create'));
                         if (!createBtn) continue;
-                        out.push({
-                            id: match[0],
-                            href: createBtn.href || '',
-                            text: text.trim().substring(0, 100),
-                        });
+                        out.push({ id: match[0], href: createBtn.href || '', text: text.trim().substring(0, 100) });
                     }
                     return out;
                 }
@@ -413,7 +397,7 @@ class SSHS8:
 
         except Exception as e:
             log.error(f"❌ open_country: {e}", exc_info=True)
-            await self._screenshot(f"❌ open_country: {str(e)[:200]}")
+            await self._screenshot(f"❌ open_country")
             return []
 
     # ═══════════════════════════════════════
@@ -430,10 +414,9 @@ class SSHS8:
         try:
             await page.goto(server_href, wait_until="domcontentloaded", timeout=60000)
             await page.wait_for_timeout(4000)
-
             await self._close_ads(page)
 
-            # ✅ username
+            # username
             for sel in ['input[name*="user" i]', 'input[type="text"]', 'input[name="username"]']:
                 try:
                     el = page.locator(sel).first
@@ -445,7 +428,7 @@ class SSHS8:
                 except Exception:
                     continue
 
-            # ✅ password
+            # password
             for sel in ['input[type="password"]', 'input[name*="pass" i]']:
                 try:
                     el = page.locator(sel).first
@@ -462,17 +445,11 @@ class SSHS8:
             await page.wait_for_timeout(500)
             url_before = page.url
 
-            # ✅ Create
-            for sel in [
-                'button:has-text("إنشاء حساب")',
-                'button:has-text("Create account")',
-                'button:has-text("Create")',
-                'input[type="submit"]',
-            ]:
+            for sel in ['button:has-text("إنشاء حساب")', 'button:has-text("Create account")', 'button:has-text("Create")', 'input[type="submit"]']:
                 try:
                     el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.click(timeout=5000)
+                    if await el.count() > 0:
+                        await el.click(timeout=5000, force=True)
                         log.info(f"✅ Create clicked")
                         break
                 except Exception:
@@ -509,8 +486,7 @@ class SSHS8:
                     const inputs = document.querySelectorAll('input, textarea');
                     for (const inp of inputs) {
                         const val = (inp.value || inp.textContent || '').trim();
-                        if (!val) continue;
-                        if (val.toLowerCase() === 'copy') continue;
+                        if (!val || val.toLowerCase() === 'copy') continue;
                         out.values.push(val);
                         if (val.startsWith('vmess://') || val.startsWith('vless://') || val.startsWith('trojan://')) out.link = val;
                     }
@@ -532,14 +508,10 @@ class SSHS8:
                 }
             """)
 
-            if data.get("ipv4") and not result["host"]:
-                result["host"] = data["ipv4"]
-            if data.get("domain") and not result["domain"]:
-                result["domain"] = data["domain"]
-            if data.get("user") and not result["username"]:
-                result["username"] = data["user"]
-            if data.get("link") and not result["link_tls"]:
-                result["link_tls"] = data["link"]
+            if data.get("ipv4") and not result["host"]: result["host"] = data["ipv4"]
+            if data.get("domain") and not result["domain"]: result["domain"] = data["domain"]
+            if data.get("user") and not result["username"]: result["username"] = data["user"]
+            if data.get("link") and not result["link_tls"]: result["link_tls"] = data["link"]
 
             if result["link_tls"]:
                 vmess = self._decode_link(result["link_tls"])
@@ -568,19 +540,12 @@ class SSHS8:
                 host = parsed.hostname or ""
                 port = parsed.port or 443
                 params = parse_qs(parsed.query)
-                return {
-                    "id": uuid, "add": host, "port": port,
-                    "path": unquote(params.get("path", ["/vless/"])[0]),
-                    "host": params.get("host", ["youtube.com"])[0],
-                    "sni": params.get("sni", "youtube.com")[0] if params.get("sni") else "youtube.com",
-                }
+                return {"id": uuid, "add": host, "port": port, "path": unquote(params.get("path", ["/vless/"])[0]), "host": params.get("host", ["youtube.com"])[0], "sni": "youtube.com"}
             elif link.startswith("vmess://"):
                 b64 = link.replace("vmess://", "").strip()
                 b64 += "=" * ((4 - len(b64) % 4) % 4)
-                try:
-                    decoded = base64.b64decode(b64).decode("utf-8")
-                except Exception:
-                    decoded = base64.urlsafe_b64decode(b64).decode("utf-8")
+                try: decoded = base64.b64decode(b64).decode("utf-8")
+                except Exception: decoded = base64.urlsafe_b64decode(b64).decode("utf-8")
                 return json.loads(decoded)
             elif link.startswith("trojan://"):
                 from urllib.parse import urlparse, parse_qs
@@ -589,20 +554,12 @@ class SSHS8:
                 password = parsed.username or ""
                 host = parsed.hostname or ""
                 port = parsed.port or 443
-                params = parse_qs(parsed.query)
-                return {
-                    "id": password, "add": host, "port": port,
-                    "path": params.get("path", ["/trojan/"])[0],
-                    "host": params.get("host", ["youtube.com"])[0],
-                    "sni": "youtube.com",
-                }
+                return {"id": password, "add": host, "port": port, "path": "/trojan/", "host": "youtube.com", "sni": "youtube.com"}
         except Exception as e:
             log.error(f"❌ _decode_link: {e}")
         return None
 
     async def close(self):
         try:
-            if self.page:
-                await self.page.close()
-        except Exception:
-            pass
+            if self.page: await self.page.close()
+        except Exception: pass
