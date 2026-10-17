@@ -1,6 +1,6 @@
 """
 automation/browser.py
-- يشتغل headless=False فـ Xvfb (VNC بلا password)
+- يشتغل headless=False فـ Xvfb (VNC)
 """
 import os
 from playwright.async_api import async_playwright
@@ -36,7 +36,7 @@ class StealthBrowser:
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=config.CHROME_PROFILE_DIR,
-            headless=False,  # ✅ مهم للـ VNC
+            headless=False,
             args=args,
             viewport={"width": 1280, "height": 720},
             user_agent=config.USER_AGENT,
@@ -44,9 +44,7 @@ class StealthBrowser:
             timezone_id="America/New_York",
             color_scheme="light",
             java_script_enabled=True,
-            extra_http_headers={
-                "Accept-Language": "en-US,en;q=0.9",
-            },
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
         )
 
         await self.context.add_init_script(STEALTH_JS)
