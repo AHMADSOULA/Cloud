@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - أتمتة موقع sshs8.com
-- تصليح الضغط على السهم باش تبان القارات
+- إضافة Scroll + Wait + Close Ads
 - تصوير فـ كل خطوة
 """
 import asyncio
@@ -74,7 +74,6 @@ class SSHS8:
             await self._close_ads()
             await self.page.wait_for_timeout(1000)
 
-            # 1. ندورو على البروتوكول ونضغطو عليه (باش يفتح القائمة)
             clicked = False
             for sel in [
                 f'a:has-text("{proto_name}")',
@@ -102,7 +101,7 @@ class SSHS8:
                 """, proto_name)
                 await self.page.wait_for_timeout(2000)
 
-            # 2. نضغطو على السهم (▼) إلا كان
+            # نضغطو على السهم (▼) إلا كان
             try:
                 arrow_clicked = await self.page.evaluate(r"""
                     (name) => {
@@ -126,10 +125,8 @@ class SSHS8:
                     await self.page.wait_for_timeout(2000)
             except Exception: pass
 
-            # 3. نصوّرو باش نتأكدو
             await self._screenshot(f"2. Protocol: {proto_name}")
 
-            # 4. نستخرجو القارات
             continents = await self.page.evaluate(r"""
                 () => {
                     const out = [];
@@ -156,32 +153,60 @@ class SSHS8:
             return []
 
     async def open_continent(self, cont_name: str) -> list:
-        """يفتح القارة ويجيب الدول"""
+        """يفتح القارة، يهبط تحت، ويجيب الدول"""
         try:
             await self._close_ads()
+            
+            # 1. نضغطو على القارة
             for sel in [f'a:has-text("{cont_name}")', f'text="{cont_name}"']:
                 try:
                     el = self.page.locator(sel).first
                     if await el.count() > 0:
                         await el.click(timeout=5000, force=True)
-                        await self.page.wait_for_timeout(3000)
+                        await self.page.wait_for_timeout(4000)
                         break
                 except Exception: continue
 
+            # 2. نغلقو الإعلانات
+            await self._close_ads()
+
+            # 3. نقبلو الكوكيز إلا كان
+            try:
+                await self.page.locator('button:has-text("Accept")').first.click(timeout=2000, force=True)
+            except Exception: pass
+
+            # 4. نهبطو تحت (Scroll)
+            for _ in range(5):
+                await self.page.mouse.wheel(0, 800)
+                await self.page.wait_for_timeout(1000)
+
+            # 5. نصوّرو
             await self._screenshot(f"3. Continent: {cont_name}")
 
-            return await self.page.evaluate(r"""
+            # 6. نستخرجو الدول من الروابط
+            countries = await self.page.evaluate(r"""
                 () => {
                     const out = [];
-                    const exclude = ["Menu", "Home", "SSH Websocket", "V2Ray", "OpenVPN", "TROJAN"];
-                    document.querySelectorAll('h2, h3, h4').forEach(h => {
-                        const t = (h.innerText || '').trim();
-                        if (t && t.length < 50 && !exclude.includes(t) && !out.find(x => x.name === t)) out.push({ name: t });
+                    const exclude = ["Menu", "Home", "SSH Websocket", "V2Ray", "OpenVPN", "TROJAN", "Europe", "Asia", "America", "Africa"];
+                    document.querySelectorAll('a').forEach(a => {
+                        const t = (a.innerText || '').trim();
+                        if (t && t.length > 3 && t.length < 40 && !exclude.includes(t)) {
+                            // نأكدو أنها صفحة دولة (تحتوي على SSH ولا vless)
+                            if (a.href && (a.href.toLowerCase().includes('ssh') || a.href.toLowerCase().includes('server'))) {
+                                if (!out.find(x => x.name === t)) {
+                                    out.push({ name: t, href: a.href });
+                                }
+                            }
+                        }
                     });
                     return out;
                 }
             """)
-        except Exception: return []
+            
+            return countries
+        except Exception as e:
+            log.error(f"❌ open_continent: {e}")
+            return []
 
     async def open_country(self, country_name: str) -> list:
         """يفتح الدولة ويجيب الخوادم"""
@@ -192,7 +217,7 @@ class SSHS8:
                     el = self.page.locator(sel).first
                     if await el.count() > 0:
                         await el.click(timeout=5000, force=True)
-                        await self.page.wait_for_timeout(3000)
+                        await self.page.wait_for_timeout(4000)
                         break
                 except Exception: continue
             
@@ -211,7 +236,7 @@ class SSHS8:
             return await self.page.evaluate(r"""
                 () => {
                     const out = [];
-                    document.querySelectorAll('[class*="card"]').forEach(card => {
+                    document.querySelectorAll('[class*="card"], article').forEach(card => {
                         const m = (card.innerText || '').match(/E\d{2,3}/);
                         if (!m) return;
                         const btn = Array.from(card.querySelectorAll('a, button')).find(b => b.innerText.includes('إنشاء') || b.innerText.includes('Create'));
