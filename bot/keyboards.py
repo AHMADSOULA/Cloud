@@ -14,5 +14,7 @@ def admin_menu():
         [InlineKeyboardButton("🌐 تحويل VMESS", callback_data="convert:vmess")],
         [InlineKeyboardButton("⚡ تحويل VLESS", callback_data="convert:vless")],
         [InlineKeyboardButton("🛡️ تحويل Trojan", callback_data="convert:trojan")],
+        [InlineKeyboardButton("📊 إحصائيات بوت", callback_data="admin_stats")],
+        [InlineKeyboardButton("👥 مستخدمين حالياً", callback_data="admin_users")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
     ])
