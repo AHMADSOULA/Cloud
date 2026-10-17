@@ -1,7 +1,6 @@
 """
 utils/recorder.py
-- كيسجل كل خطوة فـ المتصفح
-- Video recording + Playwright Trace
+- يسجل الشاشة (فيديو) + Trace
 """
 import os
 import asyncio
@@ -33,17 +32,14 @@ class BrowserRecorder:
         self.chat_id = chat_id
 
     async def start(self):
-        """يبدأ التسجيل (Trace + Video)"""
         try:
             self.start_time = datetime.now()
 
-            # ✅ Trace
             if self.context:
                 await self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
                 self.trace_active = True
                 log.info("🎬 Trace started")
 
-            # ✅ Video (ffmpeg)
             self.video_path = os.path.join(self.log_dir, f"screen_{int(asyncio.get_event_loop().time()*1000)}.mp4")
             try:
                 self.video_process = await asyncio.create_subprocess_exec(
@@ -69,16 +65,13 @@ class BrowserRecorder:
             return False
 
     async def stop(self):
-        """يوقف التسجيل"""
         try:
-            # ✅ Trace
             if self.trace_active and self.context:
                 self.trace_path = os.path.join(self.log_dir, f"trace_{int(asyncio.get_event_loop().time()*1000)}.zip")
                 await self.context.tracing.stop(path=self.trace_path)
                 self.trace_active = False
                 log.info(f"✅ Trace stopped: {self.trace_path}")
 
-            # ✅ Video
             if self.video_process:
                 self.video_process.terminate()
                 try:
@@ -87,21 +80,15 @@ class BrowserRecorder:
                     self.video_process.kill()
                 log.info(f"✅ Video stopped: {self.video_path}")
 
-            return {
-                "trace": self.trace_path,
-                "video": self.video_path,
-            }
+            return {"trace": self.trace_path, "video": self.video_path}
         except Exception as e:
             log.error(f"❌ stop: {e}")
             return {}
 
     async def send_report(self):
-        """يبعت الملفات"""
         if not self.bot or not self.chat_id:
             return
-
         try:
-            # ✅ التقرير النصي
             duration = (datetime.now() - self.start_time).total_seconds() if self.start_time else 0
             lines = [
                 "═" * 60,
@@ -109,48 +96,25 @@ class BrowserRecorder:
                 f"⏰ Started: {self.start_time.strftime('%Y-%m-%d %H:%M:%S') if self.start_time else '-'}",
                 f"⏱️ Duration: {int(duration)}s",
                 "═" * 60,
-                "",
             ]
-
-            # ✅ إرسال التقرير
             report_text = "\n".join(lines)
             bio = io.BytesIO(report_text.encode("utf-8"))
             bio.name = "recording_info.txt"
             bio.seek(0)
-            await self.bot.send_document(
-                chat_id=self.chat_id,
-                document=bio,
-                filename="recording_info.txt",
-                caption=f"📊 معلومات التسجيل ({int(duration)}s)",
-            )
+            await self.bot.send_document(chat_id=self.chat_id, document=bio, filename="recording_info.txt", caption=f"📊 معلومات التسجيل ({int(duration)}s)")
 
-            # ✅ إرسال Trace
             if self.trace_path and os.path.exists(self.trace_path):
                 with open(self.trace_path, "rb") as f:
-                    await self.bot.send_document(
-                        chat_id=self.chat_id,
-                        document=f,
-                        filename=os.path.basename(self.trace_path),
-                        caption="🎬 Playwright Trace",
-                    )
+                    await self.bot.send_document(chat_id=self.chat_id, document=f, filename=os.path.basename(self.trace_path), caption="🎬 Playwright Trace")
 
-            # ✅ إرسال الفيديو
             if self.video_path and os.path.exists(self.video_path):
                 size_mb = os.path.getsize(self.video_path) / (1024 * 1024)
-                if size_mb < 50:  # حد 50MB
+                if size_mb < 50:
                     with open(self.video_path, "rb") as f:
-                        await self.bot.send_video(
-                            chat_id=self.chat_id,
-                            video=f,
-                            caption=f"🎥 تسجيل الشاشة ({size_mb:.1f}MB)",
-                        )
+                        await self.bot.send_video(chat_id=self.chat_id, video=f, caption=f"🎥 تسجيل الشاشة ({size_mb:.1f}MB)")
                 else:
-                    await self.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=f"⚠️ الفيديو كبير ({size_mb:.1f}MB) — ما نقدرش نبعثو",
-                    )
+                    await self.bot.send_message(chat_id=self.chat_id, text=f"⚠️ الفيديو كبير ({size_mb:.1f}MB)")
 
             log.info(f"✅ Report sent")
-
         except Exception as e:
             log.error(f"❌ send_report: {e}")
