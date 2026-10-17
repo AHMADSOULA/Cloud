@@ -20,6 +20,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install chromium
 RUN playwright install-deps chromium
 
+# ✅ إنشاء كلمة سر VNC
+RUN mkdir -p /root/.vnc && \
+    x11vnc -storepasswd "CloudVIP2026" /root/.vnc/passwd
+
 # Copy project
 COPY . .
 
