@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - أتمتة موقع sshs8.com
-- إضافة Scroll قوي (window.scrollTo) + Wait + Close Ads
+- إضافة Scroll قوي + استخراج الدول مع الإيموجي
 - تصوير فـ كل خطوة
 """
 import asyncio
@@ -153,7 +153,7 @@ class SSHS8:
             return []
 
     async def open_continent(self, cont_name: str) -> list:
-        """يفتح القارة، يهبط لتحت 100%، ويجيب الدول"""
+        """يفتح القارة، يهبط لتحت 100%، يصور، ويجيب الدول مع الإيموجي"""
         try:
             await self._close_ads()
             
@@ -167,11 +167,9 @@ class SSHS8:
                         break
                 except Exception: continue
 
-            # 2. نغلقو الإعلانات
             await self._close_ads()
-            await self.page.wait_for_timeout(1000)
 
-            # 3. نقبلو الكوكيز
+            # 2. نقبلو الكوكيز إلا كان
             for sel in ['button:has-text("Accept")', 'button:has-text("Agree")', 'button:has-text("Got it")']:
                 try:
                     el = self.page.locator(sel).first
@@ -180,125 +178,109 @@ class SSHS8:
                         break
                 except Exception: continue
 
-            # 4. نهبطو لتحت 100% بـ JS (بلا ما نتأثرو بالماوس)
-            scroll_result = await self.page.evaluate(r"""
+            # 3. نهبطو لتحت 100% باش تبان البطاقات
+            await self.page.evaluate(r"""
                 async () => {
                     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                    let lastHeight = 0;
-                    let stableCount = 0;
-                    
-                    for (let i = 0; i < 20; i++) {
-                        window.scrollTo(0, document.body.scrollHeight);
-                        await sleep(800);
-                        
-                        const newHeight = document.body.scrollHeight;
-                        if (newHeight === lastHeight) {
-                            stableCount++;
-                            if (stableCount >= 3) break;
-                        } else {
-                            stableCount = 0;
-                            lastHeight = newHeight;
-                        }
+                    for (let i = 0; i < 15; i++) {
+                        window.scrollBy(0, 500);
+                        await sleep(500);
                     }
-                    
-                    return {
-                        finalHeight: document.body.scrollHeight,
-                        currentScroll: window.scrollY,
-                        iterations: stableCount,
-                    };
                 }
             """)
-            log.info(f"📜 Scroll result: {scroll_result}")
-
-            # 5. نستناو شوية باش تتحمل العناصر (lazy loading)
             await self.page.wait_for_timeout(3000)
             await self._close_ads()
 
-            # 6. نصوّرو
+            # 4. نصوّرو باش المستخدم يشوف الصفحة
             await self._screenshot(f"3. Continent: {cont_name}")
 
-            # 7. نستخرجو الدول من الروابط
+            # 5. نستخرجو الدول من البطاقات
             countries = await self.page.evaluate(r"""
                 () => {
                     const out = [];
-                    const exclude = ["Menu", "Home", "About", "Contact", "Blog", "Privacy", "Terms", "SSH Websocket", "V2Ray", "OpenVPN", "TROJAN", "Europe", "Asia", "America", "Africa", "Free VPN", "Premium VPN", "WireGuard"];
-                    
-                    document.querySelectorAll('a').forEach(a => {
-                        const t = (a.innerText || a.textContent || '').trim();
-                        if (!t || t.length < 3 || t.length > 40) return;
-                        if (exclude.includes(t)) return;
+                    // ✅ ندورو على كل البطاقات (Cards) اللي فيها Location
+                    document.querySelectorAll('div').forEach(div => {
+                        const text = div.innerText || '';
+                        if (!text.includes('Location:') || !text.includes('Server list')) return;
                         
-                        const href = (a.href || '').toLowerCase();
-                        if (href.includes('ssh') || href.includes('server') || href.includes('config')) {
-                            if (!out.find(x => x.name === t)) {
-                                out.push({ name: t, href: a.href });
-                            }
+                        // نجيبو اسم الدولة
+                        const match = text.match(/Location:\s*([^\n]+)/i);
+                        if (!match) return;
+                        const countryName = match[1].trim();
+                        
+                        // نجيبو الإيموجي (علم الدولة)
+                        const emojiMatch = text.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+                        const emoji = emojiMatch ? emojiMatch[0] : "🌍";
+                        
+                        if (!out.find(x => x.name === countryName)) {
+                            out.push({ name: countryName, emoji: emoji });
                         }
                     });
-                    
-                    if (out.length === 0) {
-                        document.querySelectorAll('[class*="card"], article, [class*="country"]').forEach(card => {
-                            const h = card.querySelector('h2, h3, h4, strong, a');
-                            if (!h) return;
-                            const t = (h.innerText || '').trim();
-                            if (!t || t.length < 3 || t.length > 40) return;
-                            if (exclude.includes(t)) return;
-                            
-                            const link = card.querySelector('a');
-                            if (!out.find(x => x.name === t)) {
-                                out.push({ name: t, href: link ? link.href : '' });
-                            }
-                        });
-                    }
-                    
                     return out;
                 }
             """)
             
-            log.info(f"🌍 Countries found: {len(countries)}")
+            log.info(f"🌍 Countries: {[c['name'] for c in countries]}")
             return countries
         except Exception as e:
             log.error(f"❌ open_continent: {e}")
             return []
 
     async def open_country(self, country_name: str) -> list:
-        """يفتح الدولة ويجيب الخوادم"""
+        """يدخل للدولة ويضغط على Server list ويجيب الخوادم"""
         try:
             await self._close_ads()
-            for sel in [f'text="{country_name}"', f'a:has-text("{country_name}")']:
-                try:
-                    el = self.page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=5000, force=True)
-                        await self.page.wait_for_timeout(4000)
-                        break
-                except Exception: continue
             
-            # نضغطو على قائمة الخوادم
-            for sel in ['text="قائمة الخوادم"', 'a:has-text("قائمة الخوادم")']:
-                try:
-                    el = self.page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=3000, force=True)
-                        await self.page.wait_for_timeout(2000)
-                        break
-                except Exception: continue
+            # 1. نلقاو البطاقة ديال الدولة ونضغطو على "Server list"
+            clicked = await self.page.evaluate(r"""
+                (name) => {
+                    const divs = document.querySelectorAll('div');
+                    for (const div of divs) {
+                        const txt = div.innerText || '';
+                        if (txt.includes('Location: ' + name)) {
+                            const btn = Array.from(div.querySelectorAll('button, a')).find(b => b.innerText.includes('Server list'));
+                            if (btn) { btn.click(); return true; }
+                        }
+                    }
+                    return false;
+                }
+            """, country_name)
 
-            await self._screenshot(f"4. Country: {country_name}")
+            if not clicked:
+                # نحاولو نلقاو الزر مباشرة
+                el = self.page.locator('button:has-text("Server list")').first
+                if await el.count() > 0:
+                    await el.click(timeout=5000, force=True)
+                    clicked = True
 
-            return await self.page.evaluate(r"""
+            if not clicked:
+                return []
+
+            await self.page.wait_for_timeout(4000)
+            await self._close_ads()
+            await self._screenshot(f"4. Servers: {country_name}")
+
+            # 2. نستخرجو الخوادم (E105 / Create)
+            servers = await self.page.evaluate(r"""
                 () => {
                     const out = [];
-                    document.querySelectorAll('[class*="card"], article').forEach(card => {
-                        const m = (card.innerText || '').match(/E\d{2,3}/);
+                    document.querySelectorAll('div').forEach(div => {
+                        const txt = div.innerText || '';
+                        const m = txt.match(/E\d{2,3}/);
                         if (!m) return;
-                        const btn = Array.from(card.querySelectorAll('a, button')).find(b => b.innerText.includes('إنشاء') || b.innerText.includes('Create'));
-                        if (btn) out.push({ id: m[0], href: btn.href || '' });
+                        const btn = Array.from(div.querySelectorAll('a, button')).find(b => b.innerText.includes('إنشاء') || b.innerText.includes('Create'));
+                        if (btn && !out.find(x => x.id === m[0])) {
+                            out.push({ id: m[0], href: btn.href || '' });
+                        }
                     });
                     return out;
                 }
             """)
-        except Exception: return []
+            
+            return servers
+        except Exception as e:
+            log.error(f"❌ open_country: {e}")
+            return []
 
     async def create_account(self, href: str) -> dict:
         """إنشاء الحساب فـ الخادم"""
