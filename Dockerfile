@@ -1,6 +1,5 @@
 FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
 
-# تثبيت Xvfb + VNC + noVNC + supervisor
 RUN apt-get update && apt-get install -y \
     xvfb \
     x11vnc \
@@ -8,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     websockify \
     supervisor \
     net-tools \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -21,9 +21,8 @@ RUN playwright install-deps chromium
 COPY . .
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# ✅ مهم جداً: Railway كيحتاج PORT
-ENV PORT=8080
 ENV DISPLAY=:99
+ENV PORT=8080
 EXPOSE 8080
 
 CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
