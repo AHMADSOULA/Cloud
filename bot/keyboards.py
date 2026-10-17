@@ -1,6 +1,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-def main_menu(is_admin=False):
+
+def main_menu(is_admin: bool = False):
     rows = [
         [InlineKeyboardButton("📊 حالتي", callback_data="status")],
     ]
@@ -8,13 +9,20 @@ def main_menu(is_admin=False):
         rows.append([InlineKeyboardButton("⚙️ ADMIN", callback_data="admin")])
     return InlineKeyboardMarkup(rows)
 
+
 def admin_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔐 تحويل SSH", callback_data="convert:ssh")],
-        [InlineKeyboardButton("🌐 تحويل VMESS", callback_data="convert:vmess")],
-        [InlineKeyboardButton("⚡ تحويل VLESS", callback_data="convert:vless")],
-        [InlineKeyboardButton("🛡️ تحويل Trojan", callback_data="convert:trojan")],
+        [InlineKeyboardButton("🔐 تحويل SSH (جلب حساب)", callback_data="admin_convert_ssh")],
         [InlineKeyboardButton("📊 إحصائيات بوت", callback_data="admin_stats")],
         [InlineKeyboardButton("👥 مستخدمين حالياً", callback_data="admin_users")],
+        [InlineKeyboardButton("🚫 محظورين من بوت", callback_data="admin_banned")],
+        [InlineKeyboardButton("📋 قائمة طلبات استخدام", callback_data="admin_requests")],
+        [InlineKeyboardButton("⚡ زيادة سرعة مستخدم", callback_data="admin_priority")],
+        [InlineKeyboardButton("🔨 حضر مستخدم عبر ID", callback_data="admin_ban")],
+        [InlineKeyboardButton("✅ إعطاء صلاحية عبر ID", callback_data="admin_grant")],
+        [InlineKeyboardButton("⏸️ توقيف/تشغيل مستخدم", callback_data="admin_pause")],
+        [InlineKeyboardButton("📢 إرسال رسالة إلى مستخدمين", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("⛔ إيقاف البوت عن الجميع", callback_data="admin_stop_all")],
+        [InlineKeyboardButton("▶️ تشغيل البوت للجميع", callback_data="admin_start_all")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
     ])
