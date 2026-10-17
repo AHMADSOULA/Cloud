@@ -3,7 +3,6 @@ import io
 import base64
 import json
 import re
-from urllib.parse import urlparse, parse_qs, unquote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -16,7 +15,8 @@ from utils.logger import get_logger
 from config import config
 from automation.browser import StealthBrowser
 from automation.sso_flow import run_sso_flow
-from automation.vmess import build_trojan_dark
+from automation.vmess import build_ssh_dark
+from automation.sshs8 import SSHS8
 
 log = get_logger("Handlers")
 
@@ -64,7 +64,7 @@ queue = JobQueue()
 DARK_FILES = [
     {"name": "YOUTUBE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ=="},
     {"name": "SNAPCHAT_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiU05BUENIQVRfNEhf8J-HuvCfh7giLCJ2bGVzc1R1bm5lbENvbmZpZyI6eyJ2MnJheUNvbmZpZyI6eyJob3N0IjoiZ29vZ2xlLmNvbSIsInBvcnQiOjQ0MywidXVpZCI6ImFhYWExMTExLWJiYmItNGNjYy04ZGRkLWVlZWVmZmZmMDAwMCIsInNlcnZlck5hbWVJbmRpY2F0aW9uIjoiYXBpLnNuYXBjaGF0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTEwMjc5NzcwNDc4OC51cy1jZW50cmFsMS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0="},
-    {"name": "FREE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19"},
+    {"name": "FREE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dpcHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19"},
 ]
 
 def _b64_pad(s: str) -> str:
@@ -100,7 +100,7 @@ def is_admin(user_id: int) -> bool:
 
 
 # ═══════════════════════════════════════════
-# /start
+# الأوامر
 # ═══════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,7 +133,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# Cloud Run Handle URL
+# Cloud Run
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -182,7 +182,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# ADMIN: تحويل الملفات
+# ADMIN
 # ═══════════════════════════════════════════
 
 async def admin_panel(query, context):
@@ -192,85 +192,85 @@ async def admin_panel(query, context):
         reply_markup=admin_menu(),
     )
 
-async def ask_for_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ask_for_ssh_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    service = query.data.split(":")[1]
-    context.user_data["convert_service"] = service
+    context.user_data["await_convert_ssh"] = True
     
-    format_text = "`trojan://u8490603632@ov-france1.09vpn.com:2083`"
-        
     await query.message.edit_text(
-        f"📝 *تحويل {service.upper()}*\n\n"
-        f"أرسل المعلومات بالشكل التالي:\n"
-        f"{format_text}\n\n"
-        f"البوت غادي يزيد Proxy + Payload + SNI.",
+        "🔐 *تحويل SSH*\n\n"
+        "أرسل المعلومات بالشكل التالي:\n"
+        "`host@user:pass`\n\n"
+        "سأقوم بالدخول لموقع sshs8.com وإنشاء الحساب لك.",
         parse_mode=ParseMode.MARKDOWN
     )
 
-async def handle_conversion_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    service = context.user_data.get("convert_service")
-    if not service:
-        return
+async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("await_convert_ssh"):
+        return False
         
     text = update.message.text.strip()
+    context.user_data.pop("await_convert_ssh", None) # حيدنا الحالة
     
     try:
-        if service in ["ssh", "trojan"]:
-            # الشكل: host@user:pass
-            parts = re.split(r'[@:]', text)
-            if len(parts) < 3:
-                raise ValueError("تأكد من الشكل host@user:pass")
+        parts = text.split("@")
+        if len(parts) != 2:
+            raise ValueError("تأكد من الشكل host@user:pass")
+        host = parts[0]
+        user_pass = parts[1].split(":")
+        if len(user_pass) != 2:
+            raise ValueError("تأكد من الشكل host@user:pass")
+        user = user_pass[0]
+        password = user_pass[1]
+
+        msg = await update.message.reply_text("⏳ جاري الدخول لموقع sshs8.com وإنشاء الحساب...")
+        
+        # 1. فتح المتصفح والدخول للموقع
+        browser = StealthBrowser()
+        ctx = await browser.start()
+        ssh = SSHS8(ctx)
+        
+        # 2. إنشاء الحساب (هنا كيخدم سكريبت sshs8.py اللي كيدخل للموقع ويختار الدولة ويعبي الحساب)
+        result = await ssh.create_account("Europe") # تقدر تبدل Europe بأي دولة بغيتي
+        
+        if not result.get("success"):
+            await msg.edit_text(f"❌ فشل إنشاء الحساب: {result.get('message', 'سبب غير معروف')}")
+            await browser.close()
+            return True
             
-            host, user, password = parts[0], parts[1], parts[2]
-            
-            if service == "ssh":
-                uri = build_ssh_dark(host, user, password, kind="youtube")
-            else:
-                data = {"add": host, "id": password}
-                uri = build_trojan_dark(data, password, kind="youtube")
-            
-        else: # vmess / vless
-            if text.startswith("vmess://"):
-                b64 = text.replace("vmess://", "")
-                b64 += "=" * ((4 - len(b64) % 4) % 4)
-                data = json.loads(base64.b64decode(b64).decode())
-            elif text.startswith("vless://"):
-                data = {"add": text.split("@")[1].split(":")[0], "id": text.split("@")[0].split("vless://")[1]}
-            elif text.startswith("trojan://"):
-                # استخراج من رابط trojan
-                u = text.replace("trojan://", "")
-                password = u.split("@")[0]
-                host = u.split("@")[1].split(":")[0]
-                data = {"add": host, "id": password}
-            else:
-                raise ValueError("لينك غير صحيح")
-            
-            if service == "vmess":
-                uri = build_vmess_dark(data, data.get("id", "pass"), kind="youtube")
-            else:
-                uri = build_vless_dark(data, data.get("id", "pass"), kind="youtube")
+        host = result.get("host")
+        username = result.get("username")
+        password = result.get("password")
+        
+        # 3. بناء الملف وإرساله
+        uri = build_ssh_dark(host, username, password, kind="youtube")
         
         if not uri:
-            raise ValueError("فشل بناء الملف.")
-
-        filename = f"{service.upper()}_CONVERTED.dark"
+            await msg.edit_text("❌ فشل بناء الملف.")
+            await browser.close()
+            return True
+            
+        filename = "SSH_CONVERTED.dark"
         bio = io.BytesIO(uri.encode())
         bio.name = filename
         
         await update.message.reply_document(
             document=bio,
             filename=filename,
-            caption=f"✅ تم إضافة Proxy + Payload + SNI\n📁 {filename}"
+            caption=f"✅ *تم إنشاء الحساب!*\n🌐 Host: `{host}`\n👤 User: `{username}`\n🔑 Pass: `{password}`",
+            parse_mode=ParseMode.MARKDOWN
         )
+        await msg.delete()
+        await browser.close()
+        
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: {e}")
-    finally:
-        context.user_data.pop("convert_service", None)
+        
+    return True
 
 
 # ═══════════════════════════════════════════
-# ADMIN: الإحصائيات والتحكم
+# ADMIN - الأدوات القديمة
 # ═══════════════════════════════════════════
 
 async def admin_stats(query):
@@ -323,12 +323,20 @@ async def admin_start_all(query):
     await db.set_global_stop(False)
     await query.message.edit_text("▶️ تشغيل للجميع", parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
 
+
+# ═══════════════════════════════════════════
+# handle_admin_input (للأدوات القديمة)
+# ═══════════════════════════════════════════
+
 async def handle_admin_input(update, context, text):
     mode = context.user_data.get("await")
-    if not mode: return False
+    if not mode:
+        return False
 
     user = update.effective_user
-    if not is_admin(user.id): return False
+    if not is_admin(user.id):
+        context.user_data.pop("await", None)
+        return False
 
     context.user_data.pop("await", None)
     try:
@@ -385,8 +393,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("🚫 ماشي ADMIN")
     elif data == "admin":
         await admin_panel(query, context)
-    elif data.startswith("convert:"):
-        await ask_for_conversion(update, context)
+    elif data == "admin_convert_ssh":
+        await ask_for_ssh_conversion(update, context)
     elif data == "admin_stats":
         await admin_stats(query)
     elif data == "admin_users":
