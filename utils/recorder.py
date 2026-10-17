@@ -1,6 +1,6 @@
 """
 utils/recorder.py
-- يسجل كل خطوة + Trace
+- يسجل كل خطوة + Playwright Trace
 """
 import os
 import asyncio
