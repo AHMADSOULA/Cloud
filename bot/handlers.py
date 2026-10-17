@@ -1,11 +1,15 @@
 import asyncio
 import io
+import os
 import random
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from bot.keyboards import main_menu, continents_menu, countries_menu, admin_menu
+
+from bot import messages
+from bot.keyboards import main_menu, admin_menu, continents_menu, countries_menu
 from database import db
+from utils.helpers import extract_urls
 from utils.logger import get_logger
 from config import config
 from automation.browser import StealthBrowser
@@ -14,19 +18,112 @@ from automation.vmess import build_ssh_dark, build_vmess_dark, build_vless_dark,
 
 log = get_logger("Handlers")
 
+
 def is_admin(user_id: int) -> bool:
     return user_id == config.ADMIN_ID
+
+
+# ═══════════════════════════════════════════
+# الأوامر الأساسية (اللي كيطلبها main.py)
+# ═══════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.register_user(user.id, user.username or user.first_name)
+
     if is_admin(user.id):
-        await update.message.reply_text("👋 مرحباً ADMIN\n\nالبوت جاهز.", reply_markup=main_menu(is_admin=True))
+        await update.message.reply_text(
+            "👋 *مرحباً ADMIN*\n\nالبوت جاهز للعمل.",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_menu(is_admin=True),
+        )
+        return
+
+    if await db.is_globally_stopped():
+        await update.message.reply_text("⛔ البوت متوقف حالياً.", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    if await db.is_banned(user.id):
+        await update.message.reply_text("🚫 أنت محظور.")
+        return
+
+    if await db.has_access(user.id):
+        await update.message.reply_text(
+            "👋 *مرحباً بك*",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_menu(is_admin=False),
+        )
+        return
+
+    await update.message.reply_text("🔒 أرسل `/request` باش تطلب صلاحية.", parse_mode=ParseMode.MARKDOWN)
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "ℹ️ *الأوامر المتاحة:*\n\n"
+        "/start - بدء البوت\n"
+        "/help - المساعدة\n"
+        "/status - حالة المهام\n"
+        "/cancel - إلغاء العملية\n"
+        "/request - طلب صلاحية",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    jobs = await db.get_user_jobs(user.id, limit=5)
+    if not jobs:
+        await update.message.reply_text("📭 لا مهام.")
+        return
+    lines = []
+    for jid, status, created in jobs:
+        emoji = {"pending": "⏳", "done": "✅", "failed": "❌", "running": "🔄"}.get(status, "❔")
+        lines.append(f"• `#{jid}` — {emoji} {status} — {created}")
+    await update.message.reply_text(
+        f"📊 *آخر {len(jobs)} مهام:*\n\n" + "\n".join(lines),
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+
+async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    await db.clear_session(user.id)
+
+    ssh = context.user_data.pop("ssh_obj", None)
+    if ssh:
+        try: await ssh.close()
+        except Exception: pass
+    b = context.user_data.pop("ssh_browser", None)
+    if b:
+        try: await b.close()
+        except Exception: pass
+
+    await update.message.reply_text("🚫 تم الإلغاء.")
+
+
+async def request_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if is_admin(user.id):
+        await update.message.reply_text("✅ نتا ADMIN.")
         return
     if await db.has_access(user.id):
-        await update.message.reply_text("👋 مرحباً", reply_markup=main_menu(is_admin=False))
+        await update.message.reply_text("✅ عندك صلاحية.")
         return
-    await update.message.reply_text("🔒 أرسل /request باش تطلب صلاحية.")
+    await db.add_request(user.id, user.username or user.first_name)
+    await update.message.reply_text("✅ تم إرسال طلبك للـ ADMIN.")
+    try:
+        await context.bot.send_message(
+            chat_id=config.ADMIN_ID,
+            text=f"📋 *طلب جديد*\n\n👤 {user.first_name}\n🔗 @{user.username or '-'}\n🆔 `{user.id}`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception: pass
+
+
+# ═══════════════════════════════════════════
+# SSH / VMESS / VLESS / TROJAN Flow
+# ═══════════════════════════════════════════
 
 async def handle_proto_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -35,10 +132,12 @@ async def handle_proto_selected(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = query.message.chat_id
 
     await query.message.edit_text(f"⏳ جاري الدخول لـ {proto_name}...")
+    
     browser = StealthBrowser()
     try:
         ctx = await browser.start()
         ssh = SSHS8(ctx, bot=context.bot, chat_id=chat_id)
+        
         ok = await ssh.open_home()
         if not ok: 
             await query.message.edit_text("❌ فشل فتح الموقع.")
@@ -56,10 +155,15 @@ async def handle_proto_selected(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["continents"] = continents
         context.user_data["proto_name"] = proto_name
 
-        await query.message.edit_text(f"🔌 *{proto_name}*\n\n🌍 اختر القارة:", parse_mode=ParseMode.MARKDOWN, reply_markup=continents_menu(continents))
+        await query.message.edit_text(
+            f"🔌 *{proto_name}*\n\n🌍 اختر القارة:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=continents_menu(continents),
+        )
     except Exception as e:
         await query.message.edit_text(f"❌ {e}")
         await browser.close()
+
 
 async def handle_continent_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -75,7 +179,13 @@ async def handle_continent_selected(update: Update, context: ContextTypes.DEFAUL
     
     countries = await ssh.open_continent(continent['name'])
     context.user_data["countries"] = countries
-    await query.message.edit_text(f"🌍 *{continent['name']}*\n\nاختر الدولة:", parse_mode=ParseMode.MARKDOWN, reply_markup=countries_menu(countries))
+    
+    await query.message.edit_text(
+        f"🌍 *{continent['name']}*\n\nاختر الدولة:",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=countries_menu(countries),
+    )
+
 
 async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -103,7 +213,11 @@ async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_
     result = await ssh.create_account(server['href'])
     
     if result.get("success"):
-        await context.bot.send_message(chat_id, f"✅ *تم إنشاء الحساب!*\n🌐 Host: `{result.get('ip')}`\n👤 User: `{result.get('user')}`\n🔑 Pass: `{result.get('password')}`", parse_mode=ParseMode.MARKDOWN)
+        await context.bot.send_message(
+            chat_id, 
+            f"✅ *تم إنشاء الحساب!*\n🌐 Host: `{result.get('ip')}`\n👤 User: `{result.get('user')}`\n🔑 Pass: `{result.get('password')}`", 
+            parse_mode=ParseMode.MARKDOWN
+        )
         
         # بناء الملفات
         for kind in ["youtube", "snapchat"]:
@@ -130,6 +244,17 @@ async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_
     for key in ["ssh_browser", "ssh_obj", "continents", "countries"]:
         context.user_data.pop(key, None)
 
+
+async def handle_cloud_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.edit_text("☁️ أرسل رابط SSO ديال Cloud Run.")
+
+
+# ═══════════════════════════════════════════
+# button_handler
+# ═══════════════════════════════════════════
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -142,4 +267,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("country:"):
         await handle_country_selected(update, context)
     elif data == "cloud_run":
-        await query.message.edit_text("☁️ أرسل رابط SSO ديال Cloud Run.")
+        await handle_cloud_run(update, context)
+    elif data == "back_main":
+        if is_admin(update.effective_user.id):
+            await query.message.edit_text("👋 القائمة الرئيسية", reply_markup=main_menu(True))
