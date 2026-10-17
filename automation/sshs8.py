@@ -1,26 +1,23 @@
 """
 automation/sshs8.py
-- يتخطى الإعلانات (iframe + overlays + popups)
-- يستكشف الموقع: Menu → Protocol → Continent → Country
+- يستكشف الموقع + يسجل كل خطوة
 """
 import asyncio
 import random
 import string
-import re
 import os
 import base64
 import json
 from utils.logger import get_logger
+from utils.recorder import BrowserRecorder
 
 log = get_logger("SSHS8")
 
 
 BASE_URL = "https://sshs8.com"
 
-# ✅ Payload موحد
 SSH_PAYLOAD = "CONNECT [host_port] HTTP/1.1[crlf]Host: youtubekids.com[crlf]X-Online-Host: youtubekids.com[crlf]Connection: Keep-Alive[crlf]User-Agent: Mozilla/5.0[crlf][crlf]"
 
-# ✅ SNI/WSHost موحد
 V2RAY_SNI = "youtube.com"
 V2RAY_WS_HOST = "youtube.com"
 
@@ -43,148 +40,139 @@ class SSHS8:
         self.page = None
         self.chat_id = None
         self.bot = None
-        self.screenshot_counter = 0
+        self.recorder = BrowserRecorder(context)
 
     def set_chat(self, chat_id):
         self.chat_id = chat_id
+
+    def set_bot(self, bot):
+        self.bot = bot
+        if self.chat_id:
+            self.recorder.set_bot(bot, self.chat_id)
 
     # ═══════════════════════════════════════
     # Screenshot
     # ═══════════════════════════════════════
 
-    async def _screenshot(self, caption: str = "❌ خطأ"):
-        if not self.page or not self.bot or not self.chat_id:
+    async def _shot(self, name: str, send: bool = False):
+        """screenshot + تسجيل"""
+        if not self.page:
             return
         try:
-            self.screenshot_counter += 1
-            path = f"/tmp/sshs8_{self.screenshot_counter}_{int(asyncio.get_event_loop().time()*1000)}.png"
+            path = f"/tmp/rec_{name}_{int(asyncio.get_event_loop().time()*1000)}.png"
             await self.page.screenshot(path=path, full_page=False, timeout=10000)
-            with open(path, "rb") as f:
+            await self.recorder.add_step(f"screenshot_{name}", extra={"path": path})
+
+            if send and self.bot and self.chat_id:
                 try:
-                    await self.bot.send_photo(chat_id=self.chat_id, photo=f, caption=caption[:1000])
+                    with open(path, "rb") as f:
+                        await self.bot.send_photo(chat_id=self.chat_id, photo=f, caption=f"📸 {name}")
                 except Exception as e:
                     log.warning(f"⚠️ send_photo: {e}")
+
             try:
                 os.remove(path)
             except Exception:
                 pass
         except Exception as e:
-            log.warning(f"⚠️ screenshot: {e}")
-
-    async def _fail(self, message: str) -> dict:
-        log.warning(f"❌ {message}")
-        await self._screenshot(f"❌ {message}")
-        return {"success": False, "message": message}
+            log.warning(f"⚠️ _shot: {e}")
 
     # ═══════════════════════════════════════
-    # إغلاق الإعلانات (قوي جداً)
+    # Close ads
     # ═══════════════════════════════════════
 
-    async def _close_ads(self, page):
-        """يحذف الإعلانات والـ overlays"""
+    async def _close_ads(self):
+        if not self.page:
+            return
         try:
-            # ✅ 1. نحذفو الـ iframes الإعلانية
-            await page.evaluate("""
+            await self.page.evaluate("""
                 () => {
                     const iframes = document.querySelectorAll('iframe');
                     for (const f of iframes) {
-                        if (f.src && (f.src.includes('google') || f.src.includes('ads') || f.src.includes('doubleclick') || f.src.includes('fluid') || f.src.includes('taboola') || f.src.includes('outbrain'))) {
+                        if (f.src && (f.src.includes('ads') || f.src.includes('google') || f.src.includes('doubleclick') || f.src.includes('fluid'))) {
                             f.remove();
                         }
                     }
-                }
-            """)
-
-            # ✅ 2. نحذفو popups/overlays
-            await page.evaluate("""
-                () => {
-                    const selectors = [
-                        '[class*="popup"]', '[class*="modal"]', '[class*="overlay"]',
-                        '[id*="popup"]', '[id*="modal"]', '[id*="overlay"]',
-                        '[class*="ad-"]', '[class*="ads-"]', '[id*="ad-"]', '[id*="ads-"]',
-                        'div[style*="position: fixed"]', 'div[style*="position:fixed"]'
-                    ];
-                    for (const sel of selectors) {
-                        const els = document.querySelectorAll(sel);
-                        for (const el of els) {
-                            try {
-                                const style = window.getComputedStyle(el);
-                                if (style.zIndex > 100 || style.zIndex === 'auto') {
-                                    el.remove();
-                                }
-                            } catch (e) {}
-                        }
+                    const overlays = document.querySelectorAll('[class*="popup"], [class*="modal"], [class*="overlay"]');
+                    for (const o of overlays) {
+                        try {
+                            const s = window.getComputedStyle(o);
+                            if (s.zIndex > 100 || s.position === 'fixed') o.remove();
+                        } catch(e) {}
                     }
                 }
             """)
-
-            # ✅ 3. نضغطو Close/×
-            for sel in [
-                'text="Close"', 'text="إغلاق"', 'text="×"', 'text="✕"',
-                'button:has-text("Close")', 'button:has-text("إغلاق")',
-                '[class*="close"]', '[aria-label*="close" i]',
-                'a:has-text("Close")', 'span:has-text("×")',
-                '.close', '.close-ad', '.popup-close',
-            ]:
-                try:
-                    els = page.locator(sel)
-                    count = await els.count()
-                    for i in range(min(count, 5)):
-                        el = els.nth(i)
-                        try:
-                            if await el.is_visible():
-                                await el.click(timeout=1500, force=True)
-                                await page.wait_for_timeout(300)
-                        except Exception:
-                            pass
-                except Exception:
-                    continue
-
-            await page.wait_for_timeout(500)
-            log.info("✅ Ads closed")
-        except Exception as e:
-            log.warning(f"⚠️ _close_ads: {e}")
+            await self.recorder.add_step("close_ads")
+        except Exception:
+            pass
 
     # ═══════════════════════════════════════
-    # 1. فتح الموقع
+    # Click / Type
+    # ═══════════════════════════════════════
+
+    async def _click(self, selector: str, description: str = ""):
+        if not self.page:
+            return False
+        try:
+            el = self.page.locator(selector).first
+            if await el.count() == 0:
+                await self.recorder.add_step("click_not_found", selector=selector, value=description)
+                return False
+            if not await el.is_visible():
+                await self.recorder.add_step("click_not_visible", selector=selector, value=description)
+                return False
+            await el.click(timeout=5000)
+            await self.recorder.add_step("click", selector=selector, value=description)
+            return True
+        except Exception as e:
+            await self.recorder.add_step("click_error", selector=selector, extra={"error": str(e)[:200]})
+            return False
+
+    # ═══════════════════════════════════════
+    # Home
     # ═══════════════════════════════════════
 
     async def open_home(self) -> bool:
         log.info(f"🌐 فتح: {BASE_URL}")
+        await self.recorder.start_recording()
+
         self.page = await self.context.new_page()
 
         try:
             await self.page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60000)
+            await self.recorder.add_step("goto", value=BASE_URL)
             await self.page.wait_for_timeout(4000)
 
             title = await self.page.title()
+            await self.recorder.add_step("page_loaded", extra={"title": title})
+
             if "just a moment" in title.lower() or "cloudflare" in title.lower():
                 for i in range(30):
                     await self.page.wait_for_timeout(2000)
                     title = await self.page.title()
                     if "just a moment" not in title.lower() and "cloudflare" not in title.lower():
-                        log.info(f"✅ Cloudflare passed")
+                        await self.recorder.add_step("cloudflare_passed", extra={"time": f"{(i+1)*2}s"})
                         break
                 else:
-                    await self._screenshot("❌ Cloudflare ما تجاوزناش")
+                    await self._shot("cloudflare_blocked", send=True)
                     return False
 
-            await self._close_ads(self.page)
+            await self._close_ads()
+            await self._shot("home_loaded", send=True)
             return True
         except Exception as e:
             log.error(f"❌ open_home: {e}", exc_info=True)
-            await self._screenshot(f"❌ open_home: {str(e)[:200]}")
+            await self.recorder.add_step("goto_failed", extra={"error": str(e)[:200]})
             return False
 
     # ═══════════════════════════════════════
-    # 2. البروتوكولات
+    # Protocols
     # ═══════════════════════════════════════
 
     async def get_protocols(self) -> list:
         page = self.page
         try:
-            await self._close_ads(page)
-            await page.wait_for_timeout(1000)
+            await self._close_ads()
 
             protocols = await page.evaluate(r"""
                 () => {
@@ -205,41 +193,20 @@ class SSHS8:
                 }
             """)
 
-            log.info(f"📋 Protocols: {len(protocols)}")
+            await self.recorder.add_step("found_protocols", extra={"count": len(protocols), "names": [p['name'] for p in protocols]})
+            await self._shot("protocols", send=True)
             return protocols
-
         except Exception as e:
-            log.error(f"❌ get_protocols: {e}", exc_info=True)
-            await self._screenshot(f"❌ get_protocols")
+            await self.recorder.add_step("get_protocols_error", extra={"error": str(e)[:200]})
             return []
-
-    # ═══════════════════════════════════════
-    # 3. بروتوكول → القارات
-    # ═══════════════════════════════════════
 
     async def open_protocol(self, protocol_name: str) -> list:
         page = self.page
         try:
-            await self._close_ads(page)
-
-            clicked = False
-            for sel in [f'a:has-text("{protocol_name}")', f'text="{protocol_name}"']:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=5000, force=True)
-                        await page.wait_for_timeout(4000)
-                        clicked = True
-                        log.info(f"✅ Protocol clicked: {protocol_name}")
-                        break
-                except Exception:
-                    continue
-
-            if not clicked:
-                await self._screenshot(f"❌ ما لقيناش {protocol_name}")
-                return []
-
-            await self._close_ads(page)
+            await self._close_ads()
+            await self._click(f'a:has-text("{protocol_name}")', protocol_name)
+            await page.wait_for_timeout(4000)
+            await self._shot(f"protocol_{protocol_name.replace(' ', '_')}", send=True)
 
             continents = await page.evaluate(r"""
                 () => {
@@ -260,46 +227,19 @@ class SSHS8:
                 }
             """)
 
-            if not continents:
-                await self._screenshot(f"⚠️ ما لقيناش قارات لـ {protocol_name}")
-                links = await page.evaluate("Array.from(document.querySelectorAll('a')).map(a => a.innerText.trim()).filter(t => t.length > 0 && t.length < 60).slice(0, 30)")
-                log.warning(f"🔍 Links: {links}")
-
-            log.info(f"🌍 Continents: {len(continents)}")
+            await self.recorder.add_step("found_continents", extra={"count": len(continents), "names": [c['name'] for c in continents]})
             return continents
-
         except Exception as e:
-            log.error(f"❌ open_protocol: {e}", exc_info=True)
-            await self._screenshot(f"❌ open_protocol")
+            await self.recorder.add_step("open_protocol_error", extra={"error": str(e)[:200]})
             return []
-
-    # ═══════════════════════════════════════
-    # 4. قارة → الدول
-    # ═══════════════════════════════════════
 
     async def open_continent(self, continent_name: str) -> list:
         page = self.page
         try:
-            await self._close_ads(page)
-
-            clicked = False
-            for sel in [f'a:has-text("{continent_name}")', f'text="{continent_name}"']:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=5000, force=True)
-                        await page.wait_for_timeout(4000)
-                        clicked = True
-                        log.info(f"✅ Continent clicked: {continent_name}")
-                        break
-                except Exception:
-                    continue
-
-            if not clicked:
-                await self._screenshot(f"❌ ما لقيناش {continent_name}")
-                return []
-
-            await self._close_ads(page)
+            await self._close_ads()
+            await self._click(f'a:has-text("{continent_name}")', continent_name)
+            await page.wait_for_timeout(4000)
+            await self._shot(f"continent_{continent_name.replace(' ', '_')}", send=True)
 
             countries = await page.evaluate(r"""
                 () => {
@@ -323,54 +263,24 @@ class SSHS8:
                 }
             """)
 
-            if not countries:
-                await self._screenshot(f"⚠️ ما لقيناش دول فـ {continent_name}")
-
-            log.info(f"🌍 Countries: {len(countries)}")
+            await self.recorder.add_step("found_countries", extra={"count": len(countries), "names": [c['name'] for c in countries]})
             return countries
-
         except Exception as e:
-            log.error(f"❌ open_continent: {e}", exc_info=True)
-            await self._screenshot(f"❌ open_continent")
+            await self.recorder.add_step("open_continent_error", extra={"error": str(e)[:200]})
             return []
-
-    # ═══════════════════════════════════════
-    # 5. دولة → الخوادم
-    # ═══════════════════════════════════════
 
     async def open_country(self, country_name: str) -> list:
         page = self.page
         try:
-            await self._close_ads(page)
+            await self._close_ads()
+            await self._click(f'text="{country_name}"', country_name)
+            await page.wait_for_timeout(4000)
+            await self._shot(f"country_{country_name.replace(' ', '_')}", send=True)
 
-            clicked = False
-            for sel in [f'text="{country_name}"', f'a:has-text("{country_name}")']:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=5000, force=True)
-                        await page.wait_for_timeout(4000)
-                        clicked = True
-                        log.info(f"✅ Country clicked: {country_name}")
-                        break
-                except Exception:
-                    continue
-
-            if not clicked:
-                await self._screenshot(f"❌ ما لقيناش {country_name}")
-                return []
-
-            await self._close_ads(page)
-
-            for sel in ['text="قائمة الخوادم"', 'a:has-text("قائمة الخوادم")', 'button:has-text("قائمة الخوادم")', 'text="Server List"']:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=3000, force=True)
-                        await page.wait_for_timeout(3000)
-                        break
-                except Exception:
-                    continue
+            for sel in ['text="قائمة الخوادم"', 'a:has-text("قائمة الخوادم")', 'text="Server List"']:
+                if await self._click(sel, "server_list"):
+                    await page.wait_for_timeout(3000)
+                    break
 
             servers = await page.evaluate(r"""
                 () => {
@@ -383,40 +293,32 @@ class SSHS8:
                         const btns = Array.from(card.querySelectorAll('a, button'));
                         const createBtn = btns.find(b => (b.innerText || '').includes('إنشاء') || (b.innerText || '').toLowerCase().includes('create'));
                         if (!createBtn) continue;
-                        out.push({ id: match[0], href: createBtn.href || '', text: text.trim().substring(0, 100) });
+                        out.push({ id: match[0], href: createBtn.href || '' });
                     }
                     return out;
                 }
             """)
 
-            if not servers:
-                await self._screenshot(f"⚠️ ما لقيناش خوادم فـ {country_name}")
-
-            log.info(f"🖥️ Servers: {len(servers)}")
+            await self.recorder.add_step("found_servers", extra={"count": len(servers), "servers": [s['id'] for s in servers]})
             return servers
-
         except Exception as e:
-            log.error(f"❌ open_country: {e}", exc_info=True)
-            await self._screenshot(f"❌ open_country")
+            await self.recorder.add_step("open_country_error", extra={"error": str(e)[:200]})
             return []
-
-    # ═══════════════════════════════════════
-    # 6. إنشاء الحساب
-    # ═══════════════════════════════════════
 
     async def create_account_from_server(self, server_href: str) -> dict:
         page = self.page
         if not server_href:
-            return await self._fail("❌ لا يوجد رابط خادم")
+            return {"success": False, "message": "❌ لا يوجد رابط"}
 
         password_value = generate_password()
 
         try:
             await page.goto(server_href, wait_until="domcontentloaded", timeout=60000)
+            await self.recorder.add_step("goto_server", value=server_href)
             await page.wait_for_timeout(4000)
-            await self._close_ads(page)
+            await self._close_ads()
+            await self._shot("server_page", send=True)
 
-            # username
             for sel in ['input[name*="user" i]', 'input[type="text"]', 'input[name="username"]']:
                 try:
                     el = page.locator(sel).first
@@ -424,65 +326,42 @@ class SSHS8:
                         val = await el.input_value()
                         if not val:
                             await el.fill(f"u{random.randint(100000000, 999999999)}")
+                            await self.recorder.add_step("fill_username", selector=sel)
                         break
                 except Exception:
                     continue
 
-            # password
             for sel in ['input[type="password"]', 'input[name*="pass" i]']:
                 try:
                     el = page.locator(sel).first
                     if await el.count() > 0 and await el.is_visible():
-                        await el.scroll_into_view_if_needed()
-                        await el.click()
-                        await page.wait_for_timeout(200)
-                        await el.fill("")
                         await el.fill(password_value)
+                        await self.recorder.add_step("fill_password", selector=sel, value=password_value[:5] + "...")
                         break
                 except Exception:
                     continue
-
-            await page.wait_for_timeout(500)
-            url_before = page.url
 
             for sel in ['button:has-text("إنشاء حساب")', 'button:has-text("Create account")', 'button:has-text("Create")', 'input[type="submit"]']:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0:
-                        await el.click(timeout=5000, force=True)
-                        log.info(f"✅ Create clicked")
-                        break
-                except Exception:
-                    continue
-
-            for i in range(30):
-                await page.wait_for_timeout(1000)
-                if page.url != url_before:
+                if await self._click(sel, "create_button"):
                     break
 
-            await page.wait_for_timeout(3000)
-            await self._close_ads(page)
+            await page.wait_for_timeout(5000)
+            await self._shot("after_create", send=True)
 
-            return await self._extract_credentials(page, password_value)
-
+            result = await self._extract_credentials(page, password_value)
+            await self.recorder.add_step("extracted", extra=result)
+            return result
         except Exception as e:
-            log.error(f"❌ create: {e}", exc_info=True)
-            return await self._fail(f"❌ create: {str(e)[:200]}")
-
-    # ═══════════════════════════════════════
-    # 7. استخراج المعلومات
-    # ═══════════════════════════════════════
+            await self.recorder.add_step("create_error", extra={"error": str(e)[:200]})
+            return {"success": False, "message": str(e)[:200]}
 
     async def _extract_credentials(self, page, fallback_password: str) -> dict:
-        result = {
-            "success": False, "host": None, "domain": None, "username": None,
-            "password": fallback_password, "vmess_config": None, "link_tls": None, "message": None,
-        }
+        result = {"success": False, "host": None, "domain": None, "username": None, "password": fallback_password, "vmess_config": None, "link_tls": None, "message": None}
 
         for attempt in range(40):
             data = await page.evaluate(r"""
                 () => {
-                    const out = { values: [], ipv4: null, domain: null, user: null, pass: null, link: null };
+                    const out = { values: [], ipv4: null, domain: null, user: null, link: null };
                     const inputs = document.querySelectorAll('input, textarea');
                     for (const inp of inputs) {
                         const val = (inp.value || inp.textContent || '').trim();
@@ -514,19 +393,14 @@ class SSHS8:
             if data.get("link") and not result["link_tls"]: result["link_tls"] = data["link"]
 
             if result["link_tls"]:
-                vmess = self._decode_link(result["link_tls"])
-                if vmess:
-                    result["vmess_config"] = vmess
-                    result["success"] = True
-                    break
+                result["vmess_config"] = self._decode_link(result["link_tls"])
+                result["success"] = True
+                break
             elif result["host"] and result["username"]:
                 result["success"] = True
                 break
 
             await page.wait_for_timeout(1500)
-
-        if not result["success"]:
-            return await self._fail("❌ ما لقيناش المعلومات.")
 
         return result
 
@@ -537,29 +411,21 @@ class SSHS8:
                 u = link.replace("vless://", "")
                 parsed = urlparse("vless://" + u)
                 uuid = parsed.username or parsed.netloc.split("@")[0] if "@" in parsed.netloc else ""
-                host = parsed.hostname or ""
-                port = parsed.port or 443
-                params = parse_qs(parsed.query)
-                return {"id": uuid, "add": host, "port": port, "path": unquote(params.get("path", ["/vless/"])[0]), "host": params.get("host", ["youtube.com"])[0], "sni": "youtube.com"}
+                return {"id": uuid, "add": parsed.hostname or "", "port": parsed.port or 443, "path": unquote(parse_qs(parsed.query).get("path", ["/vless/"])[0])}
             elif link.startswith("vmess://"):
                 b64 = link.replace("vmess://", "").strip()
                 b64 += "=" * ((4 - len(b64) % 4) % 4)
-                try: decoded = base64.b64decode(b64).decode("utf-8")
-                except Exception: decoded = base64.urlsafe_b64decode(b64).decode("utf-8")
+                try:
+                    decoded = base64.b64decode(b64).decode("utf-8")
+                except Exception:
+                    decoded = base64.urlsafe_b64decode(b64).decode("utf-8")
                 return json.loads(decoded)
-            elif link.startswith("trojan://"):
-                from urllib.parse import urlparse, parse_qs
-                u = link.replace("trojan://", "")
-                parsed = urlparse("trojan://" + u)
-                password = parsed.username or ""
-                host = parsed.hostname or ""
-                port = parsed.port or 443
-                return {"id": password, "add": host, "port": port, "path": "/trojan/", "host": "youtube.com", "sni": "youtube.com"}
-        except Exception as e:
-            log.error(f"❌ _decode_link: {e}")
-        return None
+        except Exception:
+            return None
 
     async def close(self):
         try:
-            if self.page: await self.page.close()
-        except Exception: pass
+            if self.page:
+                await self.page.close()
+        except Exception:
+            pass
