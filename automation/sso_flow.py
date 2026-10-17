@@ -91,16 +91,24 @@ async def _is_blocked(page) -> str:
                 const url = window.location.href.toLowerCase();
                 const body = (document.body.innerText || '').toLowerCase();
 
+                // ✅ كشف الحساب المحذوف أو المغلق
                 if (body.includes('account deleted') ||
                     body.includes('account has been deleted') ||
-                    body.includes('this account was recently deleted')) {
+                    body.includes('this account was recently deleted') ||
+                    body.includes('account is closed') ||
+                    body.includes('تم حذف الحساب') ||
+                    body.includes('تم إغلاق الحساب') ||
+                    body.includes('account deleted') ||
+                    body.includes('deleted account')) {
                     return 'account_deleted';
                 }
 
+                // ✅ صفحة تسجيل الدخول
                 if (url.includes('accounts.google.com/signin') && !url.includes('addsession')) {
                     return 'signin';
                 }
 
+                // ✅ رابط منتهي
                 if (body.includes('session expired') ||
                     body.includes('no longer valid') ||
                     body.includes('invalid link') ||
@@ -134,25 +142,9 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
     console = CloudConsole(context, sender=sender, user_tag=user_tag)
 
-    status_msg = None
-    if sender:
-        try:
-            status_msg = await sender.reply_text("🚀 جاري التنفيذ... [0/8]")
-        except Exception:
-            status_msg = None
-
-    async def update_status(step, text=""):
-        if not status_msg:
-            return
-        try:
-            await status_msg.edit_text(f"🚀 جاري التنفيذ... [{step}/8] {text}")
-        except Exception:
-            pass
-
     page = await context.new_page()
     try:
-        # 1
-        await update_status(1, "فتح الرابط")
+        # 1. فتح الرابط
         try:
             await page.goto(sso_url, wait_until="domcontentloaded", timeout=60000)
         except Exception:
@@ -160,19 +152,19 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
         await page.wait_for_timeout(2500)
 
+        # ✅ نتحققو من الحساب المحذوف
         blocked = await _is_blocked(page)
         if blocked:
             log.warning(f"❌ {blocked}")
             await console._shot(page, f"❌ {blocked}")
             messages_map = {
-                "account_deleted": "❌ الحساب محذوف — SSO منتهي",
+                "account_deleted": "❌ الحساب محذوف أو تم إغلاقه",
                 "signin": "❌ رجعنا لصفحة تسجيل الدخول — SSO منتهي",
                 "expired": "❌ الرابط منتهي",
             }
             return {"success": False, "error": blocked, "message": messages_map.get(blocked, "❌ SSO منتهي")}
 
-        # 2
-        await update_status(2, "TOS")
+        # 2. TOS
         try:
             await console.step1_welcome_screen(page)
         except Exception as e:
@@ -186,8 +178,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
             await console._shot(page, f"❌ {blocked}")
             return {"success": False, "error": blocked, "message": "❌ SSO منتهي بعد TOS"}
 
-        # 3
-        await update_status(3, "Terms Dialog")
+        # 3. Terms Dialog
         try:
             await console.step2_terms_dialog(page)
         except Exception as e:
@@ -195,7 +186,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
 
         await page.wait_for_timeout(1500)
 
-        # 4
+        # 4. Dashboard
         log.info("⏳ نستناو Dashboard...")
         dashboard_ok = False
         for i in range(20):
@@ -205,7 +196,7 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
                 log.warning(f"❌ {blocked} بعد {i+1}s")
                 await console._shot(page, f"❌ {blocked}")
                 messages_map = {
-                    "account_deleted": "❌ الحساب محذوف — SSO منتهي",
+                    "account_deleted": "❌ الحساب محذوف أو تم إغلاقه",
                     "signin": "❌ SSO منتهي — رجعنا لصفحة تسجيل الدخول",
                     "expired": "❌ الرابط منتهي",
                 }
@@ -223,39 +214,28 @@ async def run_sso_flow(context, sso_url: str, image: str, sender=None, user_tag=
         authuser = extract_authuser(page.url)
         log.info(f"🔑 authuser = {authuser}")
 
-        # 5
-        await update_status(4, "تفعيل API")
+        # 5. تفعيل API
         try:
             await console.step3_enable_api(page, project_id, authuser)
         except Exception as e:
             log.warning(f"⚠️ step3: {e}")
 
-        # 6
-        await update_status(5, f"إنشاء Cloud Run {flag}")
+        # 6. إنشاء Cloud Run
         try:
             await console.step4_create_cloud_run(page, project_id, authuser, image, region=region)
         except Exception as e:
             await console._shot(page, "❌ step4 فشل")
             return {"success": False, "error": "step4_failed", "message": str(e)[:200]}
 
-        # 7
-        await update_status(7, "Create")
         await page.wait_for_timeout(400)
 
-        # 8
-        await update_status(8, "انتظار الرابط")
+        # 7. انتظار الرابط
         try:
             final_url = await console.step5_get_deployed_url(page)
             domain = extract_domain_from_service_url(final_url)
         except Exception as e:
             await console._shot(page, "❌ step5 فشل")
             return {"success": False, "error": "step5_failed", "message": str(e)[:200]}
-
-        if status_msg:
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
 
     finally:
         try:
