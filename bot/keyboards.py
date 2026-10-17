@@ -7,7 +7,7 @@ def main_menu(is_admin: bool = False):
         [InlineKeyboardButton("🚀 بروتوكولات", callback_data="protocols")],
     ]
     if is_admin:
-        # ✅ حيدنا أزرار التسجيل — غادي يبدا تلقائياً
+        # ✅ زر إيقاف التسجيل فقط
         rows.append([InlineKeyboardButton("⏹️ إيقاف التسجيل", callback_data="rec_stop")])
         rows.append([InlineKeyboardButton("⚙️ ADMIN", callback_data="admin")])
     return InlineKeyboardMarkup(rows)
