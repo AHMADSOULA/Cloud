@@ -4,6 +4,7 @@ from bot import handlers
 from database.db import init_db
 from utils.logger import get_logger
 from utils.helpers import extract_urls
+import asyncio
 
 log = get_logger("Main")
 
