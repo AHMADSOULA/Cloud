@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - أتمتة موقع sshs8.com
-- استخراج الدول من النص الكامل (بدون الاعتماد على زر Server list)
+- ما كيهبطش بزاف، كيقرا الدول من النص كامل
 """
 import asyncio
 import random
@@ -144,7 +144,7 @@ class SSHS8:
             return []
 
     async def open_continent(self, cont_name: str) -> list:
-        """يفتح القارة، يهبط بشوية، ويستخرج الدول من النص المباشر"""
+        """يفتح القارة، ما كيهبطش، كيقرا الدول من النص"""
         try:
             await self._close_ads()
             
@@ -168,17 +168,10 @@ class SSHS8:
                         break
                 except Exception: continue
 
-            # نهبطو بشوية
-            for step in range(15):
-                await self.page.mouse.wheel(0, 300)
-                await self.page.wait_for_timeout(500)
-
-            await self.page.wait_for_timeout(2000)
-            await self._close_ads()
-
+            # ✅ نصورو (بلا Scroll باش تبان البطاقات اللي فوق)
             await self._screenshot(f"3. Continent: {cont_name}")
 
-            # استخراج الدول من النص
+            # ✅ نستخرجو الدول من النص الكامل
             countries = await self.page.evaluate(r"""
                 () => {
                     const out = [];
@@ -193,7 +186,7 @@ class SSHS8:
                         if (!countryName || countryName.length > 60) continue;
                         
                         let emoji = "🌍";
-                        for (let j = Math.max(0, i - 5); j < i; j++) {
+                        for (let j = Math.max(0, i - 8); j < i; j++) {
                             const emojiMatch = lines[j].match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
                             if (emojiMatch) { emoji = emojiMatch[0]; break; }
                         }
@@ -225,12 +218,12 @@ class SSHS8:
 
             log.info(f"🌍 Countries: {[c['name'] for c in countries]}")
             return countries
+
         except Exception as e:
             log.error(f"❌ open_continent: {e}")
             return []
 
     async def open_country(self, country_name: str) -> list:
-        """يدخل للدولة ويضغط Server list ويجيب الخوادم"""
         try:
             await self._close_ads()
             
