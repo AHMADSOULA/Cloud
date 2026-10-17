@@ -17,6 +17,9 @@ from automation.vmess import build_ssh_dark
 
 log = get_logger("Handlers")
 
+# ═══════════════════════════════════════════
+# ملفات Cloud Run
+# ═══════════════════════════════════════════
 DARK_FILES = [
     {"name": "YOUTUBE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ=="},
     {"name": "SNAPCHAT_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiU05BUENIQVRfNEhf8J-HuvCfh7giLCJ2bGVzc1R1bm5lbENvbmZpZyI6eyJ2MnJheUNvbmZpZyI6eyJob3N0IjoiZ29vZ2xlLmNvbSIsInBvcnQiOjQ0MywidXVpZCI6ImFhYWExMTExLWJiYmItNGNjYy04ZGRkLWVlZWVmZmZmMDAwMCIsInNlcnZlck5hbWVJbmRpY2F0aW9uIjoiYXBpLnNuYXBjaGF0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTEwMjc5NzcwNDc4OC51cy1jZW50cmFsMS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0="},
@@ -53,11 +56,39 @@ def build_darktunnel_uri_with_host(base_uri: str, new_host: str) -> str:
 def is_admin(user_id: int) -> bool:
     return user_id == config.ADMIN_ID
 
+# ═══════════════════════════════════════════
+# الأوامر الأساسية (ضرورية باش main.py يخدم)
+# ═══════════════════════════════════════════
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.register_user(user.id, user.username or user.first_name)
     if is_admin(user.id):
-        await update.message.reply_text(messages.WELCOME_ADMIN, parse_mode="Markdown", reply_markup=main_menu(is_admin=True))
+        await update.message.reply_text(
+            messages.WELCOME_ADMIN,
+            parse_mode="Markdown",
+            reply_markup=main_menu(is_admin=True),
+            disable_web_page_preview=True,
+        )
+    else:
+        await update.message.reply_text("🔒 أرسل /request باش تطلب صلاحية.")
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("ℹ️ /start - /admin - /cancel")
+
+async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📊 البوت شغال.")
+
+async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("🚫 تم الإلغاء.")
+
+async def request_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ تم إرسال طلبك.")
+
+# ═══════════════════════════════════════════
+# Cloud Run
+# ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -76,7 +107,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await run_sso_flow(ctx, sso_url, image=config.DEFAULT_IMAGE, sender=msg, user_tag=user.username)
         
         if not result.get("success"):
-            # ✅ إلا كان الحساب محذوف أو مغلق، كيبعت الصورة والرسالة
             shot = result.get("screenshot")
             if shot and os.path.exists(shot):
                 with open(shot, "rb") as f:
@@ -108,6 +138,10 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         await browser.close()
 
+# ═══════════════════════════════════════════
+# ADMIN
+# ═══════════════════════════════════════════
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -120,7 +154,42 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("⚙️ ADMIN PANEL", reply_markup=admin_menu())
     elif data == "admin_convert_ssh":
         context.user_data["await_convert_ssh"] = True
-        await query.message.edit_text("🔐 تحويل SSH\n\nأرسل: IP:Port@User:Pass\nمثال:\n152.228.162.19:22@u1595199941:U6CqrexXyK")
+        await query.message.edit_text(
+            "🔐 تحويل SSH\n\n"
+            "أرسل المعلومات بالشكل التالي:\n"
+            "IP:Port@User:Pass\n\n"
+            "مثال:\n"
+            "152.228.162.19:22@u1595199941:U6CqrexXyK"
+        )
+    elif data == "admin_stats":
+        await query.message.edit_text("📊 الإحصائيات مازال ما تبرمجتش.")
+    elif data == "admin_users":
+        await query.message.edit_text("👥 المستخدمين مازال ما تبرمجوش.")
+    elif data == "admin_banned":
+        await query.message.edit_text("🚫 المحظورين مازال ما تبرمجوش.")
+    elif data == "admin_requests":
+        await query.message.edit_text("📋 الطلبات مازال ما تبرمجوش.")
+    elif data == "admin_priority":
+        context.user_data["await"] = "priority"
+        await query.message.edit_text("⚡ أرسل ID:")
+    elif data == "admin_ban":
+        context.user_data["await"] = "ban"
+        await query.message.edit_text("🔨 أرسل ID:")
+    elif data == "admin_grant":
+        context.user_data["await"] = "grant"
+        await query.message.edit_text("✅ أرسل ID:")
+    elif data == "admin_pause":
+        context.user_data["await"] = "pause"
+        await query.message.edit_text("⏸️ أرسل ID:")
+    elif data == "admin_broadcast":
+        context.user_data["await"] = "broadcast"
+        await query.message.edit_text("📢 أرسل الرسالة:")
+    elif data == "admin_stop_all":
+        await db.set_global_stop(True)
+        await query.message.edit_text("⛔ إيقاف للجميع", reply_markup=admin_menu())
+    elif data == "admin_start_all":
+        await db.set_global_stop(False)
+        await query.message.edit_text("▶️ تشغيل للجميع", reply_markup=admin_menu())
 
 async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.user_data.get("await_convert_ssh"): return False
@@ -140,4 +209,33 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
         await update.message.reply_document(document=bio, filename=filename)
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: {e}\nتأكد من الشكل: IP:Port@User:Pass")
+    return True
+
+async def handle_admin_input(update, context, text):
+    mode = context.user_data.get("await")
+    if not mode: return False
+    if not is_admin(update.effective_user.id): return False
+    context.user_data.pop("await", None)
+    try:
+        if mode == "grant":
+            await db.set_access(int(text), 1)
+            await update.message.reply_text(f"✅ تم تفعيل {text}")
+        elif mode == "ban":
+            await db.set_ban(int(text), 1)
+            await update.message.reply_text(f"🚫 تم حظر {text}")
+        elif mode == "priority":
+            await db.set_priority(int(text), 100)
+            await update.message.reply_text(f"⚡ تم زيادة {text}")
+        elif mode == "broadcast":
+            users = await db.get_all_users()
+            sent = 0
+            for u in users:
+                try:
+                    await context.bot.send_message(chat_id=u["user_id"], text=text)
+                    sent += 1
+                except Exception:
+                    pass
+            await update.message.reply_text(f"📢 تم الإرسال لـ {sent}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ: {e}")
     return True
