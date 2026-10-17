@@ -1,6 +1,6 @@
 """
 automation/browser.py
-- يشتغل headless=False فـ Xvfb (VNC)
+- headless=True (بلا Xvfb)
 """
 import os
 from playwright.async_api import async_playwright
@@ -30,13 +30,12 @@ class StealthBrowser:
             "--no-default-browser-check",
             "--disable-infobars",
             "--window-size=1280,720",
-            "--start-maximized",
             f"--user-agent={config.USER_AGENT}",
         ]
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=config.CHROME_PROFILE_DIR,
-            headless=False,
+            headless=True,  # ✅ مهم — بلا Xvfb
             args=args,
             viewport={"width": 1280, "height": 720},
             user_agent=config.USER_AGENT,
@@ -51,18 +50,14 @@ class StealthBrowser:
         self.context.set_default_timeout(config.PAGE_TIMEOUT)
         self.context.set_default_navigation_timeout(config.NAV_TIMEOUT)
 
-        log.info("✅ المتصفح جاهز (VNC 5900 — بلا password)")
+        log.info("✅ المتصفح جاهز (headless=True)")
         return self.context
 
     async def close(self):
         if self.context:
-            try:
-                await self.context.close()
-            except Exception:
-                pass
+            try: await self.context.close()
+            except Exception: pass
         if self.playwright:
-            try:
-                await self.playwright.stop()
-            except Exception:
-                pass
+            try: await self.playwright.stop()
+            except Exception: pass
         log.info("تم إغلاق المتصفح")
