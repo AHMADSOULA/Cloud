@@ -1,8 +1,3 @@
-"""
-automation/sshs8.py
-- يستكشف الموقع (للمراقبة)
-- يسجل كل خطوة
-"""
 import asyncio
 import os
 from utils.logger import get_logger
@@ -33,11 +28,9 @@ class SSHS8:
             self.recorder.set_bot(bot, self.chat_id)
 
     async def start_recording(self):
-        """يبدأ التسجيل"""
         return await self.recorder.start()
 
     async def open_url(self, url: str = BASE_URL) -> bool:
-        """يفتح URL (البوت ما كيديرش أي أتمتة)"""
         log.info(f"🌐 فتح: {url}")
         self.page = await self.context.new_page()
         try:
@@ -49,7 +42,6 @@ class SSHS8:
             return False
 
     async def stop_and_send(self):
-        """يوقف التسجيل + يبعت الملفات"""
         await self.recorder.stop()
         await self.recorder.send_report()
 
