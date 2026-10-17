@@ -1,6 +1,6 @@
 """
 automation/browser.py
-- يشتغل headless=False فـ Xvfb (VNC)
+- يشتغل headless=False فـ Xvfb (VNC بلا password)
 """
 import os
 from playwright.async_api import async_playwright
@@ -53,7 +53,7 @@ class StealthBrowser:
         self.context.set_default_timeout(config.PAGE_TIMEOUT)
         self.context.set_default_navigation_timeout(config.NAV_TIMEOUT)
 
-        log.info("✅ المتصفح جاهز (VNC 5900 مع كلمة سر)")
+        log.info("✅ المتصفح جاهز (VNC 5900 — بلا password)")
         return self.context
 
     async def close(self):
