@@ -16,7 +16,6 @@ from config import config
 from automation.browser import StealthBrowser
 from automation.sso_flow import run_sso_flow
 from automation.vmess import build_ssh_dark
-from automation.sshs8 import SSHS8
 
 log = get_logger("Handlers")
 
@@ -64,7 +63,7 @@ queue = JobQueue()
 DARK_FILES = [
     {"name": "YOUTUBE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ=="},
     {"name": "SNAPCHAT_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiU05BUENIQVRfNEhf8J-HuvCfh7giLCJ2bGVzc1R1bm5lbENvbmZpZyI6eyJ2MnJheUNvbmZpZyI6eyJob3N0IjoiZ29vZ2xlLmNvbSIsInBvcnQiOjQ0MywidXVpZCI6ImFhYWExMTExLWJiYmItNGNjYy04ZGRkLWVlZWVmZmZmMDAwMCIsInNlcnZlck5hbWVJbmRpY2F0aW9uIjoiYXBpLnNuYXBjaGF0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTEwMjc5NzcwNDc4OC51cy1jZW50cmFsMS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0="},
-    {"name": "FREE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dpcHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19"},
+    {"name": "FREE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiRlJFRV80SF_wn4e68J-HuCIsInZsZXNzVHVubmVsQ29uZmlnIjp7InYycmF5Q29uZmlnIjp7Imhvc3QiOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwicG9ydCI6NDQzLCJ1dWlkIjoiYWFhYTExMTEtYmJiYi00Y2NjLThkZGQtZWVlZWZmZmYwMDAwIiwic2VydmVyTmFtZUluZGljYXRpb24iOiJhbHQxMy55dDMuZ2dwaHQuY29tIiwid3NQYXRoIjoiL1RlbGVncmFtL0BBTTJfRDMvQEFITUFEMzIxNCJ9LCJpbmplY3RDb25maWciOnsiZW5hYmxlZCI6dHJ1ZSwibW9kZSI6IlBST1hZIiwicHJveHlIb3N0IjoiMTU3LjI0MC45LjM5IiwicGF5bG9hZCI6IkNPTk5FQ1QgW2hvc3RdOltwb3J0XSBIVFRQLzEuMVtjcmxmXXgtY29ubmVjdGVkLXRvOiAzNC4xNDMuNzIuMltjcmxmXXByb3h5LWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl1jb25uZWN0aW9uOiBrZWVwLWFsaXZlW2Nyb2ZdeC1pb3JnLWJzaWQ6IEBBTTJfRDNbY3JsZl1bY3JsZl0ifX19"},
 ]
 
 def _b64_pad(s: str) -> str:
@@ -100,7 +99,7 @@ def is_admin(user_id: int) -> bool:
 
 
 # ═══════════════════════════════════════════
-# الأوامر
+# الأوامر الأساسية
 # ═══════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,7 +132,7 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# Cloud Run
+# Cloud Run (SSO)
 # ═══════════════════════════════════════════
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -182,15 +181,8 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# ADMIN
+# ADMIN: تحويل SSH (بلا دخول للموقع)
 # ═══════════════════════════════════════════
-
-async def admin_panel(query, context):
-    await query.message.edit_text(
-        "⚙️ *ADMIN PANEL*\n\nاختر:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=admin_menu(),
-    )
 
 async def ask_for_ssh_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -199,10 +191,16 @@ async def ask_for_ssh_conversion(update: Update, context: ContextTypes.DEFAULT_T
     
     await query.message.edit_text(
         "🔐 *تحويل SSH*\n\n"
-        "أرسل المعلومات بالشكل التالي:\n"
+        "1️⃣ اذهب إلى موقع:\n"
+        "`https://sshs8.com`\n\n"
+        "2️⃣ اختر: *SSH WebSocket*\n\n"
+        "3️⃣ أنشئ حساب جديد\n\n"
+        "4️⃣ أرسل المعلومات بالشكل التالي:\n"
         "`host@user:pass`\n\n"
-        "سأقوم بالدخول لموقع sshs8.com وإنشاء الحساب لك.",
-        parse_mode=ParseMode.MARKDOWN
+        "مثال:\n"
+        "`192.168.1.1@myuser:mypass`",
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True
     )
 
 async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -210,61 +208,49 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
         return False
         
     text = update.message.text.strip()
-    context.user_data.pop("await_convert_ssh", None) # حيدنا الحالة
+    context.user_data.pop("await_convert_ssh", None)
     
     try:
         parts = text.split("@")
         if len(parts) != 2:
             raise ValueError("تأكد من الشكل host@user:pass")
-        host = parts[0]
+        
+        host = parts[0].strip()
         user_pass = parts[1].split(":")
         if len(user_pass) != 2:
             raise ValueError("تأكد من الشكل host@user:pass")
-        user = user_pass[0]
-        password = user_pass[1]
-
-        msg = await update.message.reply_text("⏳ جاري الدخول لموقع sshs8.com وإنشاء الحساب...")
         
-        # 1. فتح المتصفح والدخول للموقع
-        browser = StealthBrowser()
-        ctx = await browser.start()
-        ssh = SSHS8(ctx)
+        user = user_pass[0].strip()
+        password = user_pass[1].strip()
         
-        # 2. إنشاء الحساب (هنا كيخدم سكريبت sshs8.py اللي كيدخل للموقع ويختار الدولة ويعبي الحساب)
-        result = await ssh.create_account("Europe") # تقدر تبدل Europe بأي دولة بغيتي
-        
-        if not result.get("success"):
-            await msg.edit_text(f"❌ فشل إنشاء الحساب: {result.get('message', 'سبب غير معروف')}")
-            await browser.close()
-            return True
-            
-        host = result.get("host")
-        username = result.get("username")
-        password = result.get("password")
-        
-        # 3. بناء الملف وإرساله
-        uri = build_ssh_dark(host, username, password, kind="youtube")
+        uri = build_ssh_dark(host, user, password, kind="youtube")
         
         if not uri:
-            await msg.edit_text("❌ فشل بناء الملف.")
-            await browser.close()
-            return True
-            
-        filename = "SSH_CONVERTED.dark"
+            raise ValueError("فشل بناء الملف")
+        
+        filename = f"SSH_{host}.dark"
         bio = io.BytesIO(uri.encode())
         bio.name = filename
         
         await update.message.reply_document(
             document=bio,
             filename=filename,
-            caption=f"✅ *تم إنشاء الحساب!*\n🌐 Host: `{host}`\n👤 User: `{username}`\n🔑 Pass: `{password}`",
+            caption=(
+                f"✅ *تم التحويل!*\n\n"
+                f"🖥️ Host: `{host}`\n"
+                f"👤 User: `{user}`\n"
+                f"🔑 Pass: `{password}`\n\n"
+                f"📁 {filename}"
+            ),
             parse_mode=ParseMode.MARKDOWN
         )
-        await msg.delete()
-        await browser.close()
         
     except Exception as e:
-        await update.message.reply_text(f"❌ خطأ: {e}")
+        await update.message.reply_text(
+            f"❌ خطأ: {e}\n\n"
+            f"تأكد من الشكل: `host@user:pass`",
+            parse_mode=ParseMode.MARKDOWN
+        )
         
     return True
 
@@ -272,6 +258,13 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
 # ═══════════════════════════════════════════
 # ADMIN - الأدوات القديمة
 # ═══════════════════════════════════════════
+
+async def admin_panel(query, context):
+    await query.message.edit_text(
+        "⚙️ *ADMIN PANEL*\n\nاختر:",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=admin_menu(),
+    )
 
 async def admin_stats(query):
     users = await db.get_all_users()
