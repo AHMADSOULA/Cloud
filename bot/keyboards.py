@@ -4,7 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 def main_menu(is_admin: bool = False):
     rows = [
         [InlineKeyboardButton("📊 حالتي", callback_data="status")],
-        [InlineKeyboardButton("🚀 بروتوكولات", callback_data="protocols")],
+        [InlineKeyboardButton("🔐 SSH WebSocket", callback_data="ssh_start")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton("⏹️ إيقاف التسجيل", callback_data="rec_stop")])
@@ -36,3 +36,11 @@ def list_menu(items: list, prefix: str):
         rows.append([InlineKeyboardButton(name[:60], callback_data=f"{prefix}:{idx}")])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
+
+
+def continents_menu(continents: list):
+    return list_menu(continents, "cont")
+
+
+def countries_menu(countries: list):
+    return list_menu(countries, "country")
