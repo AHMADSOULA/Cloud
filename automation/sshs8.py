@@ -1,8 +1,7 @@
 """
 automation/sshs8.py
 - أتمتة موقع sshs8.com
-- Scroll تدريجي حتى يلقى Server list
-- استخراج الدول مع الإيموجي
+- استخراج الدول من النص الكامل (بدون الاعتماد على زر Server list)
 """
 import asyncio
 import random
@@ -27,7 +26,6 @@ class SSHS8:
         self.counter = 0
 
     async def _screenshot(self, name: str):
-        """تصوير الصفحة وإرسالها للمستخدم"""
         if not self.page or not self.bot or not self.chat_id:
             return
         try:
@@ -43,7 +41,6 @@ class SSHS8:
         except Exception: pass
 
     async def _close_ads(self):
-        """إغلاق الإعلانات وحذف الـ Overlays"""
         try:
             await self.page.evaluate("""
                 () => {
@@ -69,17 +66,12 @@ class SSHS8:
         except Exception: return False
 
     async def open_protocol(self, proto_name: str) -> list:
-        """يفتح البروتوكول (SSH/VMESS/VLESS/TROJAN) ويضغط على السهم باش تبان القارات"""
         try:
             await self._close_ads()
             await self.page.wait_for_timeout(1000)
 
             clicked = False
-            for sel in [
-                f'a:has-text("{proto_name}")',
-                f'span:has-text("{proto_name}")',
-                f'li:has-text("{proto_name}")',
-            ]:
+            for sel in [f'a:has-text("{proto_name}")', f'span:has-text("{proto_name}")', f'li:has-text("{proto_name}")']:
                 try:
                     el = self.page.locator(sel).first
                     if await el.count() > 0:
@@ -101,7 +93,6 @@ class SSHS8:
                 """, proto_name)
                 await self.page.wait_for_timeout(2000)
 
-            # نضغطو على السهم (▼)
             try:
                 arrow_clicked = await self.page.evaluate(r"""
                     (name) => {
@@ -153,11 +144,10 @@ class SSHS8:
             return []
 
     async def open_continent(self, cont_name: str) -> list:
-        """يفتح القارة، يهبط بشوية حتى يلقى Server list، ويجيب الدول"""
+        """يفتح القارة، يهبط بشوية، ويستخرج الدول من النص المباشر"""
         try:
             await self._close_ads()
             
-            # 1. نضغطو على القارة
             for sel in [f'a:has-text("{cont_name}")', f'text="{cont_name}"']:
                 try:
                     el = self.page.locator(sel).first
@@ -170,7 +160,6 @@ class SSHS8:
             await self._close_ads()
             await self.page.wait_for_timeout(1000)
 
-            # 2. نقبلو الكوكيز
             for sel in ['button:has-text("Accept")', 'button:has-text("Agree")', 'button:has-text("Got it")']:
                 try:
                     el = self.page.locator(sel).first
@@ -179,71 +168,61 @@ class SSHS8:
                         break
                 except Exception: continue
 
-            # 3. نهبطو بشوية حتى نلقاو أول بطاقة فيها "Server list"
-            found = False
-            for step in range(20):
-                is_visible = await self.page.evaluate(r"""
-                    () => {
-                        const buttons = Array.from(document.querySelectorAll('button, a'));
-                        for (const btn of buttons) {
-                            const t = (btn.innerText || '').trim();
-                            if (t.includes('Server list')) {
-                                const rect = btn.getBoundingClientRect();
-                                if (rect.top >= 0 && rect.top <= window.innerHeight) return true;
-                            }
-                        }
-                        return false;
-                    }
-                """)
-                
-                if is_visible:
-                    found = True
-                    log.info(f"✅ Server list visible after {step} scrolls")
-                    break
-
+            # نهبطو بشوية
+            for step in range(15):
                 await self.page.mouse.wheel(0, 300)
-                await self.page.wait_for_timeout(800)
+                await self.page.wait_for_timeout(500)
 
-            if not found:
-                await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-                await self.page.wait_for_timeout(2000)
+            await self.page.wait_for_timeout(2000)
+            await self._close_ads()
 
-            # 4. نصوّرو
             await self._screenshot(f"3. Continent: {cont_name}")
 
-            # 5. نستخرجو الدول من البطاقات
+            # استخراج الدول من النص
             countries = await self.page.evaluate(r"""
                 () => {
                     const out = [];
-                    document.querySelectorAll('button, a').forEach(btn => {
-                        const btnTxt = (btn.innerText || '').trim();
-                        if (!btnTxt.includes('Server list')) return;
+                    const bodyText = document.body.innerText || '';
+                    const lines = bodyText.split('\n');
+                    
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line.startsWith('Location:')) continue;
                         
-                        let parent = btn.parentElement;
-                        let card = null;
-                        for (let i = 0; i < 5 && parent; i++) {
-                            if ((parent.innerText || '').includes('Location:')) { card = parent; break; }
-                            parent = parent.parentElement;
+                        const countryName = line.replace('Location:', '').trim();
+                        if (!countryName || countryName.length > 60) continue;
+                        
+                        let emoji = "🌍";
+                        for (let j = Math.max(0, i - 5); j < i; j++) {
+                            const emojiMatch = lines[j].match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
+                            if (emojiMatch) { emoji = emojiMatch[0]; break; }
                         }
-                        
-                        if (!card) return;
-                        
-                        const text = card.innerText || '';
-                        const match = text.match(/Location:\s*([^\n]+)/i);
-                        if (!match) return;
-                        
-                        const countryName = match[1].trim();
-                        const emojiMatch = text.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
-                        const emoji = emojiMatch ? emojiMatch[0] : "🌍";
                         
                         if (!out.find(x => x.name === countryName)) {
                             out.push({ name: countryName, emoji: emoji });
                         }
-                    });
+                    }
                     return out;
                 }
             """)
-            
+
+            if not countries:
+                countries = await self.page.evaluate(r"""
+                    () => {
+                        const out = [];
+                        document.querySelectorAll('h2, h3, h4, strong, span, p').forEach(el => {
+                            const t = (el.innerText || '').trim();
+                            if (t.startsWith('Location:')) {
+                                const name = t.replace('Location:', '').trim();
+                                if (name && name.length < 60 && !out.find(x => x.name === name)) {
+                                    out.push({ name: name, emoji: "🌍" });
+                                }
+                            }
+                        });
+                        return out;
+                    }
+                """)
+
             log.info(f"🌍 Countries: {[c['name'] for c in countries]}")
             return countries
         except Exception as e:
@@ -251,7 +230,7 @@ class SSHS8:
             return []
 
     async def open_country(self, country_name: str) -> list:
-        """يدخل للدولة ويضغط على Server list ويجيب الخوادم"""
+        """يدخل للدولة ويضغط Server list ويجيب الخوادم"""
         try:
             await self._close_ads()
             
@@ -302,7 +281,6 @@ class SSHS8:
             return []
 
     async def create_account(self, href: str) -> dict:
-        """إنشاء الحساب فـ الخادم"""
         password = generate_password()
         try:
             await self.page.goto(href, wait_until="domcontentloaded", timeout=60000)
