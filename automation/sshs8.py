@@ -5,7 +5,6 @@ from utils.recorder import BrowserRecorder
 
 log = get_logger("SSHS8")
 
-
 BASE_URL = "https://sshs8.com"
 
 
