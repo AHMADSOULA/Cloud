@@ -14,8 +14,10 @@ async def post_init(app):
 
 async def route_text(update, context):
     text = update.message.text or ""
+    # ✅ إلا كان المستخدم فـ وضع التحويل
     if context.user_data.get("convert_service"):
         await handlers.handle_conversion_input(update, context)
+    # ✅ إلا صيفط رابط SSO
     elif extract_urls(text):
         await handlers.handle_url(update, context)
     else:
@@ -30,7 +32,7 @@ def main():
     app.add_handler(CommandHandler("request", handlers.request_cmd))
     app.add_handler(CallbackQueryHandler(handlers.button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, route_text))
-    app.run_polling(allowed_updates=["message", "callback_query"], drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
