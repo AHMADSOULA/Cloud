@@ -9,7 +9,10 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from bot import messages
-from bot.keyboards import main_menu, admin_menu, protocols_menu, continents_menu, countries_menu
+from bot.keyboards import (
+    main_menu, admin_menu, protocols_menu,
+    continents_menu, countries_menu,
+)
 from database import db
 from utils.helpers import extract_urls
 from utils.logger import get_logger
@@ -20,12 +23,17 @@ from automation.sso_flow import run_sso_flow, extract_email_from_url, extract_pa
 log = get_logger("Handlers")
 
 
+# ═══════════════════════════════════════════
+# طابور
+# ═══════════════════════════════════════════
+
 class JobQueue:
     def __init__(self):
         self.queue = []
         self.counter = 0
         self.current = None
         self.lock = asyncio.Lock()
+
     async def add(self, user_id, chat_id, sso_url, user_tag, priority=0):
         async with self.lock:
             self.counter += 1
@@ -33,23 +41,36 @@ class JobQueue:
             self.queue.append({"num": num, "user_id": user_id, "chat_id": chat_id, "sso_url": sso_url, "user_tag": user_tag, "priority": priority})
             self.queue.sort(key=lambda x: -x["priority"])
             return num
+
     async def get_next(self):
         async with self.lock:
-            if self.current is not None: return None
-            if not self.queue: return None
+            if self.current is not None:
+                return None
+            if not self.queue:
+                return None
             self.current = self.queue.pop(0)
             return self.current
+
     async def finish(self):
-        async with self.lock: self.current = None
-    def queue_size(self): return len(self.queue)
+        async with self.lock:
+            self.current = None
+
+    def queue_size(self):
+        return len(self.queue)
+
     def position(self, user_id):
         for i, item in enumerate(self.queue):
-            if item["user_id"] == user_id: return i + 1
+            if item["user_id"] == user_id:
+                return i + 1
         return 0
 
 
 queue = JobQueue()
 
+
+# ═══════════════════════════════════════════
+# ملفات Cloud Run
+# ═══════════════════════════════════════════
 
 DARK_FILES = [
     {"name": "YOUTUBE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ=="},
@@ -93,6 +114,10 @@ def is_admin(user_id: int) -> bool:
     return user_id == config.ADMIN_ID
 
 
+# ═══════════════════════════════════════════
+# /start
+# ═══════════════════════════════════════════
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.register_user(user.id, user.username or user.first_name)
@@ -112,6 +137,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔒 أرسل `/request` باش تطلب صلاحية.", parse_mode=ParseMode.MARKDOWN)
 
 
+# ═══════════════════════════════════════════
+# /request
+# ═══════════════════════════════════════════
+
 async def request_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_admin(user.id):
@@ -124,7 +153,8 @@ async def request_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ تم إرسال طلبك.")
     try:
         await context.bot.send_message(chat_id=config.ADMIN_ID, text=f"📋 *طلب جديد*\n\n👤 {user.first_name}\n🔗 @{user.username or '-'}\n🆔 `{user.id}`", parse_mode=ParseMode.MARKDOWN)
-    except Exception: pass
+    except Exception:
+        pass
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,6 +185,10 @@ async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
     await update.message.reply_text("🚫 تم الإلغاء.")
 
+
+# ═══════════════════════════════════════════
+# SSO helpers
+# ═══════════════════════════════════════════
 
 def is_full_sso_url(url: str) -> bool:
     u = (url or "").lower()
@@ -262,10 +296,119 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# Protocol Flow
+# Recording — تسجيل الشاشة
+# ═══════════════════════════════════════════
+
+async def handle_rec_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء التسجيل — يفتح Chrome + VNC"""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    if not is_admin(user.id):
+        await query.message.edit_text("🚫 ADMIN فقط")
+        return
+
+    if context.user_data.get("recording"):
+        await query.message.edit_text("⚠️ التسجيل شغال بالفعل. اضغط ⏹️ للإيقاف")
+        return
+
+    await query.message.edit_text("🎬 جاري بدء التسجيل...")
+
+    from automation.browser import StealthBrowser
+    from automation.sshs8 import SSHS8
+
+    browser = StealthBrowser()
+    try:
+        ctx = await browser.start()
+        ssh = SSHS8(ctx, sender=None, user_tag=user.username or "admin")
+        ssh.set_chat(chat_id)
+        ssh.set_bot(context.bot)
+
+        ok = await ssh.start_recording()
+        if not ok:
+            await query.message.edit_text("❌ فشل بدء التسجيل")
+            await browser.close()
+            return
+
+        ok = await ssh.open_url("https://sshs8.com")
+        if not ok:
+            await query.message.edit_text("❌ فشل فتح الموقع")
+            await browser.close()
+            return
+
+        context.user_data["recording"] = True
+        context.user_data["rec_browser"] = browser
+        context.user_data["rec_ssh"] = ssh
+
+        railway_url = os.getenv("RAILWAY_PUBLIC_DOMAIN", "xxx.up.railway.app")
+        await query.message.edit_text(
+            f"🎬 *التسجيل بدا!*\n\n"
+            f"📱 *ادخل لـ VNC:*\n"
+            f"`https://{railway_url}/vnc.html`\n\n"
+            f"⏳ *خدم عادي فـ VNC*\n"
+            f"✅ *بعد ما تكمل، اضغط ⏹️ إيقاف التسجيل*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    except Exception as e:
+        log.exception("فشل rec_start")
+        try:
+            await query.message.edit_text(f"❌ {str(e)[:300]}")
+        except Exception:
+            pass
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+async def handle_rec_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إيقاف التسجيل + بعث الملفات"""
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    chat_id = query.message.chat_id
+
+    if not is_admin(user.id):
+        await query.message.edit_text("🚫 ADMIN فقط")
+        return
+
+    if not context.user_data.get("recording"):
+        await query.message.edit_text("⚠️ ما كاينش تسجيل شغال")
+        return
+
+    await query.message.edit_text("⏹️ جاري إيقاف التسجيل...")
+
+    ssh = context.user_data.get("rec_ssh")
+    browser = context.user_data.get("rec_browser")
+
+    try:
+        if ssh:
+            await ssh.stop_and_send()
+        await query.message.edit_text("✅ تم إيقاف التسجيل + بعث الملفات")
+    except Exception as e:
+        log.exception("فشل rec_stop")
+        await query.message.edit_text(f"❌ {str(e)[:300]}")
+    finally:
+        try:
+            if ssh: await ssh.close()
+        except Exception: pass
+        try:
+            if browser: await browser.close()
+        except Exception: pass
+        context.user_data.pop("recording", None)
+        context.user_data.pop("rec_browser", None)
+        context.user_data.pop("rec_ssh", None)
+
+
+# ═══════════════════════════════════════════
+# Protocol Flow (القديم — إلا بغيتو)
 # ═══════════════════════════════════════════
 
 async def handle_protocols(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يعرض البروتوكولات — اختياري"""
     log.info("🚀 Protocols")
     query = update.callback_query
     user = update.effective_user
@@ -284,18 +427,16 @@ async def handle_protocols(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ctx = await browser.start()
         ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
         ssh.set_chat(chat_id)
-        ssh.bot = context.bot
-        ok = await ssh.open_home()
+        ssh.set_bot(context.bot)
+        ok = await ssh.open_url("https://sshs8.com")
         if not ok:
             await query.message.edit_text("❌ ما قدرناش نفتحو الموقع.")
-            try: await browser.close()
-            except Exception: pass
+            await browser.close()
             return
         protocols = await ssh.get_protocols()
         if not protocols:
             await query.message.edit_text("❌ ما لقيناش البروتوكولات.")
-            try: await browser.close()
-            except Exception: pass
+            await browser.close()
             return
         context.user_data["ssh_browser"] = browser
         context.user_data["ssh_obj"] = ssh
@@ -355,8 +496,6 @@ async def handle_continent_selected(update: Update, context: ContextTypes.DEFAUL
 async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user = update.effective_user
-    chat_id = query.message.chat_id
     idx = int(query.data.split(":")[1])
     countries = context.user_data.get("countries", [])
     ssh = context.user_data.get("ssh_obj")
@@ -383,23 +522,15 @@ async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_
     from automation.sshs8 import SSH_PAYLOAD, V2RAY_SNI, V2RAY_WS_HOST
     builder = None
     data = None
-    if "VMESS" in proto.upper():
-        builder = build_vmess_dark
-        data = result["vmess_config"]
-    elif "VLESS" in proto.upper():
-        builder = build_vless_dark
-        data = result["vmess_config"]
-    elif "TROJAN" in proto.upper():
-        builder = build_trojan_dark
-        data = result["vmess_config"]
-    else:
-        builder = build_ssh_dark
-        data = result
+    if "VMESS" in proto.upper(): builder = build_vmess_dark; data = result["vmess_config"]
+    elif "VLESS" in proto.upper(): builder = build_vless_dark; data = result["vmess_config"]
+    elif "TROJAN" in proto.upper(): builder = build_trojan_dark; data = result["vmess_config"]
+    else: builder = build_ssh_dark; data = result
     host = result.get("host") or (data.get("add") if data else None)
     username = result.get("username") or (data.get("id") if data else None)
     password = result.get("password") or ""
     await context.bot.send_message(
-        chat_id=chat_id,
+        chat_id=query.message.chat_id,
         text=(f"✅ *Account*\n\n🔌 {proto}\n🌍 {country['name']}\n🖥️ Server: {server['id']}\n🌐 Host: `{host}`\n👤 User: `{username}`\n🔑 Pass: `{password}`\n\n📡 Proxy: `34.43.46.91:443`\n📡 Payload: `{SSH_PAYLOAD[:80]}...`\n\n🔒 SNI: `{V2RAY_SNI}`\n🌐 WS Host: `{V2RAY_WS_HOST}`"),
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -411,7 +542,7 @@ async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_
             bio = io.BytesIO(new_uri.encode("utf-8"))
             bio.name = filename
             bio.seek(0)
-            await context.bot.send_document(chat_id=chat_id, document=bio, filename=filename, caption=f"📁 {filename}")
+            await context.bot.send_document(chat_id=query.message.chat_id, document=bio, filename=filename, caption=f"📁 {filename}")
             await asyncio.sleep(0.5)
         except Exception as e: log.error(f"❌ build: {e}")
     try: await ssh.close()
@@ -421,6 +552,10 @@ async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_
     for key in ["ssh_browser", "ssh_obj", "protocols", "continents", "countries", "selected_proto", "selected_continent"]:
         context.user_data.pop(key, None)
 
+
+# ═══════════════════════════════════════════
+# ADMIN
+# ═══════════════════════════════════════════
 
 async def admin_panel(query, context):
     await query.message.edit_text("⚙️ *ADMIN PANEL*\n\nاختر:", parse_mode=ParseMode.MARKDOWN, reply_markup=admin_menu())
@@ -542,16 +677,32 @@ async def handle_admin_input(update, context, text):
     return True
 
 
+# ═══════════════════════════════════════════
+# button_handler — كل الأزرار
+# ═══════════════════════════════════════════
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user = update.effective_user
     data = query.data
     log.info(f"🔘 {data}")
+
+    # ✅ Recording
+    if data == "rec_start":
+        await handle_rec_start(update, context)
+        return
+    if data == "rec_stop":
+        await handle_rec_stop(update, context)
+        return
+
+    # ✅ Protocol flow
     if data == "protocols": await handle_protocols(update, context); return
     if data.startswith("proto:"): await handle_proto_selected(update, context); return
     if data.startswith("cont:"): await handle_continent_selected(update, context); return
     if data.startswith("country:"): await handle_country_selected(update, context); return
+
+    # ✅ Status + admin
     if data == "status": await status_cmd(update, context); return
     if data == "back_main":
         if is_admin(user.id):
