@@ -1,6 +1,6 @@
 """
 utils/recorder.py
-- يسجل كل خطوة
+- يسجل كل خطوة + Trace
 """
 import os
 import asyncio
@@ -58,7 +58,7 @@ class BrowserRecorder:
         if not self.bot or not self.chat_id:
             return
         try:
-            lines = [f"📊 Report", f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", f"📝 Steps: {len(self.steps)}", ""]
+            lines = [f"📊 Browser Report", f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", f"📝 Steps: {len(self.steps)}", ""]
             for s in self.steps:
                 lines.append(f"{s['num']:03d}. [{s['time']}] {s['action']}")
                 if s['selector']:
