@@ -4,9 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 def main_menu(is_admin: bool = False):
     rows = [
         [InlineKeyboardButton("📊 حالتي", callback_data="status")],
-        [InlineKeyboardButton("🔐 SSH WebSocket", callback_data="ssh_ws")],
-        [InlineKeyboardButton("🌐 VMESS", callback_data="vmess")],
-        [InlineKeyboardButton("⚡ VLESS", callback_data="vless")],
+        [InlineKeyboardButton("🚀 بروتوكولات", callback_data="protocols")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton("⚙️ ADMIN", callback_data="admin")])
@@ -15,29 +13,42 @@ def main_menu(is_admin: bool = False):
 
 def admin_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 إحصائيات بوت", callback_data="admin_stats")],
-        [InlineKeyboardButton("👥 مستخدمين حالياً", callback_data="admin_users")],
-        [InlineKeyboardButton("🚫 محظورين من بوت", callback_data="admin_banned")],
-        [InlineKeyboardButton("📋 قائمة طلبات استخدام", callback_data="admin_requests")],
-        [InlineKeyboardButton("⚡ زيادة سرعة مستخدم", callback_data="admin_priority")],
-        [InlineKeyboardButton("🔨 حضر مستخدم عبر ID", callback_data="admin_ban")],
-        [InlineKeyboardButton("✅ إعطاء صلاحية عبر ID", callback_data="admin_grant")],
-        [InlineKeyboardButton("⏸️ توقيف/تشغيل مستخدم", callback_data="admin_pause")],
-        [InlineKeyboardButton("📢 إرسال رسالة إلى مستخدمين", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("⛔ إيقاف البوت عن الجميع", callback_data="admin_stop_all")],
-        [InlineKeyboardButton("▶️ تشغيل البوت للجميع", callback_data="admin_start_all")],
+        [InlineKeyboardButton("📊 إحصائيات", callback_data="admin_stats")],
+        [InlineKeyboardButton("👥 مستخدمين", callback_data="admin_users")],
+        [InlineKeyboardButton("🚫 محظورين", callback_data="admin_banned")],
+        [InlineKeyboardButton("📋 طلبات", callback_data="admin_requests")],
+        [InlineKeyboardButton("⚡ زيادة سرعة", callback_data="admin_priority")],
+        [InlineKeyboardButton("🔨 حظر", callback_data="admin_ban")],
+        [InlineKeyboardButton("✅ صلاحية", callback_data="admin_grant")],
+        [InlineKeyboardButton("⏸️ توقيف/تشغيل", callback_data="admin_pause")],
+        [InlineKeyboardButton("📢 رسالة", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("⛔ إيقاف للجميع", callback_data="admin_stop_all")],
+        [InlineKeyboardButton("▶️ تشغيل للجميع", callback_data="admin_start_all")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")],
     ])
 
 
-def countries_menu(kind: str, countries: list):
+def list_menu(items: list, prefix: str):
     rows = []
-    for idx, c in enumerate(countries):
-        rows.append([
-            InlineKeyboardButton(
-                f"{c['flag']} {c['name']}",
-                callback_data=f"{kind}_country:{idx}"
-            )
-        ])
+    for idx, item in enumerate(items):
+        name = item.get('name') if isinstance(item, dict) else item
+        rows.append([InlineKeyboardButton(name[:60], callback_data=f"{prefix}:{idx}")])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
+
+
+def protocols_menu(protocols: list):
+    return list_menu(protocols, "proto")
+
+
+def continents_menu(continents: list):
+    return list_menu(continents, "cont")
+
+
+def countries_menu(countries: list):
+    return list_menu(countries, "country")
+
+
+def servers_menu(servers: list):
+    """اختيار خادم محدد — عادةً عشوائي"""
+    return list_menu(servers, "server")
