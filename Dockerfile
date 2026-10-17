@@ -21,6 +21,8 @@ RUN playwright install-deps chromium
 COPY . .
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# ✅ مهم جداً: Railway كيحتاج PORT
+ENV PORT=8080
 ENV DISPLAY=:99
 EXPOSE 8080
 
