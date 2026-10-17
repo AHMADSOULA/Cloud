@@ -19,47 +19,9 @@ from automation.vmess import build_ssh_dark
 
 log = get_logger("Handlers")
 
-
 # ═══════════════════════════════════════════
-# Cloud Run (SSO)
+# Cloud Run
 # ═══════════════════════════════════════════
-
-class JobQueue:
-    def __init__(self):
-        self.queue = []
-        self.counter = 0
-        self.current = None
-        self.lock = asyncio.Lock()
-
-    async def add(self, user_id, chat_id, sso_url, user_tag, priority=0):
-        async with self.lock:
-            self.counter += 1
-            num = self.counter
-            self.queue.append({"num": num, "user_id": user_id, "chat_id": chat_id, "sso_url": sso_url, "user_tag": user_tag, "priority": priority})
-            self.queue.sort(key=lambda x: -x["priority"])
-            return num
-
-    async def get_next(self):
-        async with self.lock:
-            if self.current is not None: return None
-            if not self.queue: return None
-            self.current = self.queue.pop(0)
-            return self.current
-
-    async def finish(self):
-        async with self.lock:
-            self.current = None
-
-    def queue_size(self):
-        return len(self.queue)
-
-    def position(self, user_id):
-        for i, item in enumerate(self.queue):
-            if item["user_id"] == user_id: return i + 1
-        return 0
-
-queue = JobQueue()
-
 DARK_FILES = [
     {"name": "YOUTUBE_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiQEFNMl9EMyBZT1VUVUJFIiwidmxlc3NUdW5uZWxDb25maWciOnsidjJyYXlDb25maWciOnsiaG9zdCI6Imdvb2dsZS5jb20iLCJwb3J0Ijo0NDMsInV1aWQiOiJhYWFhMTExMS1iYmJiLTRjY2MtOGRkZC1lZWVlZmZmZjAwMDAiLCJzZXJ2ZXJOYW1lSW5kaWNhdGlvbiI6Imdvb2dsZXZpZGVvLmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTQ0NTg4MjYxNDUzNi51cy1jZW50cmFsMS5ydW4uYXBwIn19fQ=="},
     {"name": "SNAPCHAT_4H", "uri": "darktunnel://eyJ0eXBlIjoiVkxFU1MiLCJuYW1lIjoiU05BUENIQVRfNEhf8J-HuvCfh7giLCJ2bGVzc1R1bm5lbENvbmZpZyI6eyJ2MnJheUNvbmZpZyI6eyJob3N0IjoiZ29vZ2xlLmNvbSIsInBvcnQiOjQ0MywidXVpZCI6ImFhYWExMTExLWJiYmItNGNjYy04ZGRkLWVlZWVmZmZmMDAwMCIsInNlcnZlck5hbWVJbmRpY2F0aW9uIjoiYXBpLnNuYXBjaGF0LmNvbSIsIndzUGF0aCI6Ii9UZWxlZ3JhbS9AQU0yX0QzL0BBSE1BRDMyMTQiLCJ3c0hlYWRlckhvc3QiOiJhaG1lZC12aXAxLTEwMjc5NzcwNDc4OC51cy1jZW50cmFsMS5ydW4uYXBwIn0sImluamVjdENvbmZpZyI6eyJtb2RlIjoiUFJPWFkiLCJwcm94eUhvc3QiOiIxNTcuMjQwLjkuMzkiLCJwYXlsb2FkIjoiQ09OTkVDVCBbaG9zdF06W3BvcnRdIEhUVFAvMS4xW2NybGZdeC1jb25uZWN0ZWQtdG86IDM0LjE0My43Mi4yW2NybGZdcHJveHktY29ubmVjdGlvbjoga2VlcC1hbGl2ZVtjcmxmXWNvbm5lY3Rpb246IGtlZXAtYWxpdmVbY3JsZl11c2VyLWFnZW50OiBGQkFWLzAuMCBbY3JsZl14LWlvcmctYnNpZDogQEFNMl9EM1tjcmxmXVtjcmxmXSJ9fX0="},
@@ -99,7 +61,7 @@ def is_admin(user_id: int) -> bool:
 
 
 # ═══════════════════════════════════════════
-# الأوامر الأساسية
+# الأوامر
 # ═══════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -149,23 +111,46 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "skills.google" not in sso_url and "qwiklabs" not in sso_url:
         return await update.message.reply_text("⚠️ الرابط ماشي من Google Skills.")
 
-    msg = await update.message.reply_text("⏳ جاري أتمتة Cloud Run...")
+    # ✅ رسالة وحدة فقط
+    msg = await update.message.reply_text("⏳ انتظر دقيقتين لكمال العملية...")
     browser = StealthBrowser()
     
     try:
         ctx = await browser.start()
-        result = await run_sso_flow(ctx, sso_url, image=config.DEFAULT_IMAGE, sender=msg, user_tag=user.username or "admin")
+        result = await run_sso_flow(ctx, sso_url, image=config.DEFAULT_IMAGE, sender=None, user_tag=user.username or "admin")
         
+        # ✅ كشف الحساب المحذوف
         if not result.get("success"):
-            await msg.edit_text(f"❌ فشل: {result.get('message')}")
+            error_msg = result.get("message", "")
+            
+            # ✅ إذا كان الحساب محذوف أو مغلق
+            if "account_deleted" in result.get("error", "") or "deleted" in error_msg.lower() or "محذوف" in error_msg:
+                # ✅ نصورو ونبعثو
+                try:
+                    from automation.browser import StealthBrowser
+                    if ctx.pages:
+                        page = ctx.pages[0]
+                        path = "/tmp/account_deleted.png"
+                        await page.screenshot(path=path)
+                        with open(path, "rb") as f:
+                            await update.message.reply_photo(
+                                photo=f,
+                                caption="❌ الحساب محذوف أو تم إغلاقه."
+                            )
+                        import os
+                        os.remove(path)
+                except Exception:
+                    await update.message.reply_text("❌ الحساب محذوف أو تم إغلاقه.")
+                return
+            
+            await msg.edit_text(f"❌ فشل: {error_msg}")
             return
 
         domain = result.get("domain")
         final_url = result.get("final_url")
         flag = result.get("flag", "🇺🇸")
         
-        await msg.edit_text(f"✅ *تم إنشاء الخدمة!*\n\n🌐 `{final_url}`\n🌍 {flag}", parse_mode=ParseMode.MARKDOWN)
-
+        # ✅ نبعثو الملفات
         for dark in DARK_FILES:
             uri = build_darktunnel_uri_with_host(dark["uri"], domain)
             if not uri: continue
@@ -173,7 +158,10 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bio = io.BytesIO(uri.encode())
             bio.name = filename
             await context.bot.send_document(chat_id=update.effective_chat.id, document=bio, filename=filename)
-            
+        
+        # ✅ بعد ما كملنا نمسحو رسالة الانتظار
+        await msg.delete()
+        
     except Exception as e:
         await msg.edit_text(f"❌ خطأ: {e}")
     finally:
@@ -181,8 +169,15 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# ADMIN: تحويل SSH (بلا دخول للموقع)
+# ADMIN - تحويل SSH (بلا دخول للموقع)
 # ═══════════════════════════════════════════
+
+async def admin_panel(query, context):
+    await query.message.edit_text(
+        "⚙️ *ADMIN PANEL*\n\nاختر:",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=admin_menu(),
+    )
 
 async def ask_for_ssh_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -191,14 +186,10 @@ async def ask_for_ssh_conversion(update: Update, context: ContextTypes.DEFAULT_T
     
     await query.message.edit_text(
         "🔐 *تحويل SSH*\n\n"
-        "1️⃣ اذهب إلى موقع:\n"
-        "`https://sshs8.com`\n\n"
-        "2️⃣ اختر: *SSH WebSocket*\n\n"
-        "3️⃣ أنشئ حساب جديد\n\n"
-        "4️⃣ أرسل المعلومات بالشكل التالي:\n"
-        "`host@user:pass`\n\n"
+        "أرسل المعلومات بالشكل التالي:\n"
+        "`IP:Port@User:Pass`\n\n"
         "مثال:\n"
-        "`192.168.1.1@myuser:mypass`",
+        "`152.228.162.19:22@u1595199941:U6CqrexXyK`",
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True
     )
@@ -211,18 +202,27 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
     context.user_data.pop("await_convert_ssh", None)
     
     try:
+        # ✅ تحليل الشكل: IP:Port@User:Pass
         parts = text.split("@")
         if len(parts) != 2:
-            raise ValueError("تأكد من الشكل host@user:pass")
+            raise ValueError("تأكد من الشكل IP:Port@User:Pass")
         
-        host = parts[0].strip()
-        user_pass = parts[1].split(":")
+        host_port = parts[0].strip()
+        user_pass = parts[1].strip().split(":")
+        
         if len(user_pass) != 2:
-            raise ValueError("تأكد من الشكل host@user:pass")
+            raise ValueError("تأكد من الشكل IP:Port@User:Pass")
         
-        user = user_pass[0].strip()
-        password = user_pass[1].strip()
+        host_port_split = host_port.split(":")
+        if len(host_port_split) != 2:
+            raise ValueError("تأكد من الشكل IP:Port@User:Pass")
         
+        host = host_port_split[0]
+        port = host_port_split[1]
+        user = user_pass[0]
+        password = user_pass[1]
+        
+        # ✅ بناء الملف
         uri = build_ssh_dark(host, user, password, kind="youtube")
         
         if not uri:
@@ -238,6 +238,7 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
             caption=(
                 f"✅ *تم التحويل!*\n\n"
                 f"🖥️ Host: `{host}`\n"
+                f"🔌 Port: `{port}`\n"
                 f"👤 User: `{user}`\n"
                 f"🔑 Pass: `{password}`\n\n"
                 f"📁 {filename}"
@@ -248,7 +249,7 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
     except Exception as e:
         await update.message.reply_text(
             f"❌ خطأ: {e}\n\n"
-            f"تأكد من الشكل: `host@user:pass`",
+            f"تأكد من الشكل: `IP:Port@User:Pass`",
             parse_mode=ParseMode.MARKDOWN
         )
         
@@ -258,13 +259,6 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
 # ═══════════════════════════════════════════
 # ADMIN - الأدوات القديمة
 # ═══════════════════════════════════════════
-
-async def admin_panel(query, context):
-    await query.message.edit_text(
-        "⚙️ *ADMIN PANEL*\n\nاختر:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=admin_menu(),
-    )
 
 async def admin_stats(query):
     users = await db.get_all_users()
@@ -318,7 +312,7 @@ async def admin_start_all(query):
 
 
 # ═══════════════════════════════════════════
-# handle_admin_input (للأدوات القديمة)
+# handle_admin_input
 # ═══════════════════════════════════════════
 
 async def handle_admin_input(update, context, text):
