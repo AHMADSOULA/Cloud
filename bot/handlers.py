@@ -92,11 +92,20 @@ async def handle_continent_selected(update: Update, context: ContextTypes.DEFAUL
     if not ssh or idx >= len(continents): return
     
     continent = continents[idx]
-    await query.message.edit_text(f"⏳ جاري فتح {continent['name']}...")
+    await query.message.edit_text(f"⏳ جاري فتح {continent['name']} و تحميل الدول...")
     
     countries = await ssh.open_continent(continent['name'])
+    
+    if not countries:
+        await query.message.edit_text("❌ ما لقيناش الدول. عاود جرب أو تحقق من الصورة.")
+        return
+
     context.user_data["countries"] = countries
-    await query.message.edit_text(f"🌍 *{continent['name']}*\n\nاختر الدولة:", parse_mode=ParseMode.MARKDOWN, reply_markup=countries_menu(countries))
+    await query.message.edit_text(
+        f"🌍 *{continent['name']}*\n\nاختر الدولة:", 
+        parse_mode=ParseMode.MARKDOWN, 
+        reply_markup=countries_menu(countries)
+    )
 
 async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
