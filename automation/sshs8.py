@@ -1,7 +1,7 @@
 """
 automation/sshs8.py
 - أتمتة موقع sshs8.com
-- إضافة Scroll + Wait + Close Ads
+- إضافة Scroll قوي (window.scrollTo) + Wait + Close Ads
 - تصوير فـ كل خطوة
 """
 import asyncio
@@ -153,7 +153,7 @@ class SSHS8:
             return []
 
     async def open_continent(self, cont_name: str) -> list:
-        """يفتح القارة، يهبط تحت، ويجيب الدول"""
+        """يفتح القارة، يهبط لتحت 100%، ويجيب الدول"""
         try:
             await self._close_ads()
             
@@ -169,40 +169,93 @@ class SSHS8:
 
             # 2. نغلقو الإعلانات
             await self._close_ads()
+            await self.page.wait_for_timeout(1000)
 
-            # 3. نقبلو الكوكيز إلا كان
-            try:
-                await self.page.locator('button:has-text("Accept")').first.click(timeout=2000, force=True)
-            except Exception: pass
+            # 3. نقبلو الكوكيز
+            for sel in ['button:has-text("Accept")', 'button:has-text("Agree")', 'button:has-text("Got it")']:
+                try:
+                    el = self.page.locator(sel).first
+                    if await el.count() > 0:
+                        await el.click(timeout=2000, force=True)
+                        break
+                except Exception: continue
 
-            # 4. نهبطو تحت (Scroll)
-            for _ in range(5):
-                await self.page.mouse.wheel(0, 800)
-                await self.page.wait_for_timeout(1000)
+            # 4. نهبطو لتحت 100% بـ JS (بلا ما نتأثرو بالماوس)
+            scroll_result = await self.page.evaluate(r"""
+                async () => {
+                    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                    let lastHeight = 0;
+                    let stableCount = 0;
+                    
+                    for (let i = 0; i < 20; i++) {
+                        window.scrollTo(0, document.body.scrollHeight);
+                        await sleep(800);
+                        
+                        const newHeight = document.body.scrollHeight;
+                        if (newHeight === lastHeight) {
+                            stableCount++;
+                            if (stableCount >= 3) break;
+                        } else {
+                            stableCount = 0;
+                            lastHeight = newHeight;
+                        }
+                    }
+                    
+                    return {
+                        finalHeight: document.body.scrollHeight,
+                        currentScroll: window.scrollY,
+                        iterations: stableCount,
+                    };
+                }
+            """)
+            log.info(f"📜 Scroll result: {scroll_result}")
 
-            # 5. نصوّرو
+            # 5. نستناو شوية باش تتحمل العناصر (lazy loading)
+            await self.page.wait_for_timeout(3000)
+            await self._close_ads()
+
+            # 6. نصوّرو
             await self._screenshot(f"3. Continent: {cont_name}")
 
-            # 6. نستخرجو الدول من الروابط
+            # 7. نستخرجو الدول من الروابط
             countries = await self.page.evaluate(r"""
                 () => {
                     const out = [];
-                    const exclude = ["Menu", "Home", "SSH Websocket", "V2Ray", "OpenVPN", "TROJAN", "Europe", "Asia", "America", "Africa"];
+                    const exclude = ["Menu", "Home", "About", "Contact", "Blog", "Privacy", "Terms", "SSH Websocket", "V2Ray", "OpenVPN", "TROJAN", "Europe", "Asia", "America", "Africa", "Free VPN", "Premium VPN", "WireGuard"];
+                    
                     document.querySelectorAll('a').forEach(a => {
-                        const t = (a.innerText || '').trim();
-                        if (t && t.length > 3 && t.length < 40 && !exclude.includes(t)) {
-                            // نأكدو أنها صفحة دولة (تحتوي على SSH ولا vless)
-                            if (a.href && (a.href.toLowerCase().includes('ssh') || a.href.toLowerCase().includes('server'))) {
-                                if (!out.find(x => x.name === t)) {
-                                    out.push({ name: t, href: a.href });
-                                }
+                        const t = (a.innerText || a.textContent || '').trim();
+                        if (!t || t.length < 3 || t.length > 40) return;
+                        if (exclude.includes(t)) return;
+                        
+                        const href = (a.href || '').toLowerCase();
+                        if (href.includes('ssh') || href.includes('server') || href.includes('config')) {
+                            if (!out.find(x => x.name === t)) {
+                                out.push({ name: t, href: a.href });
                             }
                         }
                     });
+                    
+                    if (out.length === 0) {
+                        document.querySelectorAll('[class*="card"], article, [class*="country"]').forEach(card => {
+                            const h = card.querySelector('h2, h3, h4, strong, a');
+                            if (!h) return;
+                            const t = (h.innerText || '').trim();
+                            if (!t || t.length < 3 || t.length > 40) return;
+                            if (exclude.includes(t)) return;
+                            
+                            const link = card.querySelector('a');
+                            if (!out.find(x => x.name === t)) {
+                                out.push({ name: t, href: link ? link.href : '' });
+                            }
+                        });
+                    }
+                    
                     return out;
                 }
             """)
             
+            log.info(f"🌍 Countries found: {len(countries)}")
             return countries
         except Exception as e:
             log.error(f"❌ open_continent: {e}")
@@ -256,13 +309,11 @@ class SSHS8:
             await self._close_ads()
             await self._screenshot("5. Server Page")
 
-            # تعبئة الحقول
             for sel in ['input[name*="user" i]', 'input[type="password"]']:
                 el = self.page.locator(sel).first
                 if await el.count() > 0:
                     await el.fill(password if 'pass' in sel else f"u{random.randint(1000,9999)}")
 
-            # نضغطو إنشاء
             for sel in ['button:has-text("إنشاء حساب")', 'button:has-text("Create")']:
                 try:
                     el = self.page.locator(sel).first
@@ -274,7 +325,6 @@ class SSHS8:
             await self.page.wait_for_timeout(5000)
             await self._screenshot("6. Account Created")
 
-            # استخراج النتائج
             data = await self.page.evaluate(r"""
                 () => {
                     const out = { ip: null, user: null, link: null };
