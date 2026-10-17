@@ -1,8 +1,8 @@
 """
 automation/sshs8.py
 - أتمتة موقع sshs8.com
-- إضافة Scroll قوي + استخراج الدول مع الإيموجي
-- تصوير فـ كل خطوة
+- Scroll تدريجي حتى يلقى Server list
+- استخراج الدول مع الإيموجي
 """
 import asyncio
 import random
@@ -101,7 +101,7 @@ class SSHS8:
                 """, proto_name)
                 await self.page.wait_for_timeout(2000)
 
-            # نضغطو على السهم (▼) إلا كان
+            # نضغطو على السهم (▼)
             try:
                 arrow_clicked = await self.page.evaluate(r"""
                     (name) => {
@@ -153,7 +153,7 @@ class SSHS8:
             return []
 
     async def open_continent(self, cont_name: str) -> list:
-        """يفتح القارة، يهبط لتحت 100%، يصور، ويجيب الدول مع الإيموجي"""
+        """يفتح القارة، يهبط بشوية حتى يلقى Server list، ويجيب الدول"""
         try:
             await self._close_ads()
             
@@ -168,8 +168,9 @@ class SSHS8:
                 except Exception: continue
 
             await self._close_ads()
+            await self.page.wait_for_timeout(1000)
 
-            # 2. نقبلو الكوكيز إلا كان
+            # 2. نقبلو الكوكيز
             for sel in ['button:has-text("Accept")', 'button:has-text("Agree")', 'button:has-text("Got it")']:
                 try:
                     el = self.page.locator(sel).first
@@ -178,37 +179,60 @@ class SSHS8:
                         break
                 except Exception: continue
 
-            # 3. نهبطو لتحت 100% باش تبان البطاقات
-            await self.page.evaluate(r"""
-                async () => {
-                    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-                    for (let i = 0; i < 15; i++) {
-                        window.scrollBy(0, 500);
-                        await sleep(500);
+            # 3. نهبطو بشوية حتى نلقاو أول بطاقة فيها "Server list"
+            found = False
+            for step in range(20):
+                is_visible = await self.page.evaluate(r"""
+                    () => {
+                        const buttons = Array.from(document.querySelectorAll('button, a'));
+                        for (const btn of buttons) {
+                            const t = (btn.innerText || '').trim();
+                            if (t.includes('Server list')) {
+                                const rect = btn.getBoundingClientRect();
+                                if (rect.top >= 0 && rect.top <= window.innerHeight) return true;
+                            }
+                        }
+                        return false;
                     }
-                }
-            """)
-            await self.page.wait_for_timeout(3000)
-            await self._close_ads()
+                """)
+                
+                if is_visible:
+                    found = True
+                    log.info(f"✅ Server list visible after {step} scrolls")
+                    break
 
-            # 4. نصوّرو باش المستخدم يشوف الصفحة
+                await self.page.mouse.wheel(0, 300)
+                await self.page.wait_for_timeout(800)
+
+            if not found:
+                await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                await self.page.wait_for_timeout(2000)
+
+            # 4. نصوّرو
             await self._screenshot(f"3. Continent: {cont_name}")
 
             # 5. نستخرجو الدول من البطاقات
             countries = await self.page.evaluate(r"""
                 () => {
                     const out = [];
-                    // ✅ ندورو على كل البطاقات (Cards) اللي فيها Location
-                    document.querySelectorAll('div').forEach(div => {
-                        const text = div.innerText || '';
-                        if (!text.includes('Location:') || !text.includes('Server list')) return;
+                    document.querySelectorAll('button, a').forEach(btn => {
+                        const btnTxt = (btn.innerText || '').trim();
+                        if (!btnTxt.includes('Server list')) return;
                         
-                        // نجيبو اسم الدولة
+                        let parent = btn.parentElement;
+                        let card = null;
+                        for (let i = 0; i < 5 && parent; i++) {
+                            if ((parent.innerText || '').includes('Location:')) { card = parent; break; }
+                            parent = parent.parentElement;
+                        }
+                        
+                        if (!card) return;
+                        
+                        const text = card.innerText || '';
                         const match = text.match(/Location:\s*([^\n]+)/i);
                         if (!match) return;
-                        const countryName = match[1].trim();
                         
-                        // نجيبو الإيموجي (علم الدولة)
+                        const countryName = match[1].trim();
                         const emojiMatch = text.match(/[\u{1F1E6}-\u{1F1FF}]{2}/u);
                         const emoji = emojiMatch ? emojiMatch[0] : "🌍";
                         
@@ -231,7 +255,6 @@ class SSHS8:
         try:
             await self._close_ads()
             
-            # 1. نلقاو البطاقة ديال الدولة ونضغطو على "Server list"
             clicked = await self.page.evaluate(r"""
                 (name) => {
                     const divs = document.querySelectorAll('div');
@@ -247,20 +270,17 @@ class SSHS8:
             """, country_name)
 
             if not clicked:
-                # نحاولو نلقاو الزر مباشرة
                 el = self.page.locator('button:has-text("Server list")').first
                 if await el.count() > 0:
                     await el.click(timeout=5000, force=True)
                     clicked = True
 
-            if not clicked:
-                return []
+            if not clicked: return []
 
             await self.page.wait_for_timeout(4000)
             await self._close_ads()
             await self._screenshot(f"4. Servers: {country_name}")
 
-            # 2. نستخرجو الخوادم (E105 / Create)
             servers = await self.page.evaluate(r"""
                 () => {
                     const out = [];
@@ -276,7 +296,6 @@ class SSHS8:
                     return out;
                 }
             """)
-            
             return servers
         except Exception as e:
             log.error(f"❌ open_country: {e}")
