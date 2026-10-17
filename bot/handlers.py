@@ -115,15 +115,96 @@ def is_admin(user_id: int) -> bool:
 
 
 # ═══════════════════════════════════════════
+# Auto-start Recording for Admin
+# ═══════════════════════════════════════════
+
+async def _start_recording_for_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
+    """يبدأ التسجيل تلقائياً للأدمن عند /start"""
+    log.info("🎬 Auto-start recording for admin")
+
+    try:
+        from automation.browser import StealthBrowser
+        from automation.sshs8 import SSHS8
+    except Exception as e:
+        await update.message.reply_text(f"❌ import: {e}")
+        return
+
+    browser = StealthBrowser()
+    try:
+        ctx = await browser.start()
+        ssh = SSHS8(ctx, sender=None, user_tag=user.username or "admin")
+        ssh.set_chat(update.effective_chat.id)
+        ssh.set_bot(context.bot)
+
+        ok = await ssh.start_recording()
+        if not ok:
+            await update.message.reply_text("❌ فشل بدء التسجيل")
+            await browser.close()
+            return
+
+        ok = await ssh.open_url("https://sshs8.com")
+        if not ok:
+            await update.message.reply_text("❌ فشل فتح الموقع")
+            await browser.close()
+            return
+
+        context.user_data["recording"] = True
+        context.user_data["rec_browser"] = browser
+        context.user_data["rec_ssh"] = ssh
+
+        railway_url = os.getenv("RAILWAY_PUBLIC_DOMAIN", "xxx.up.railway.app")
+        await update.message.reply_text(
+            f"🎬 *التسجيل بدا!*\n\n"
+            f"📱 *ادخل لـ VNC من المتصفح:*\n"
+            f"`https://{railway_url}/vnc.html`\n\n"
+            f"⏳ *خدم عادي فـ VNC*\n"
+            f"✅ *بعد ما تكمل، اضغط ⏹️ إيقاف التسجيل*",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    except Exception as e:
+        log.exception("فشل auto-start recording")
+        await update.message.reply_text(f"❌ {str(e)[:300]}")
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+# ═══════════════════════════════════════════
 # /start
 # ═══════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.register_user(user.id, user.username or user.first_name)
+
     if is_admin(user.id):
-        await update.message.reply_text(messages.WELCOME_ADMIN, parse_mode=ParseMode.MARKDOWN, reply_markup=main_menu(is_admin=True), disable_web_page_preview=True)
+        await update.message.reply_text(
+            messages.WELCOME_ADMIN,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_menu(is_admin=True),
+            disable_web_page_preview=True,
+        )
+
+        if context.user_data.get("recording"):
+            await update.message.reply_text("🎬 التسجيل شغال بالفعل. اضغط ⏹️ لإيقافو")
+            return
+
+        old_browser = context.user_data.pop("rec_browser", None)
+        old_ssh = context.user_data.pop("rec_ssh", None)
+        if old_browser:
+            try:
+                if old_ssh:
+                    await old_ssh.close()
+                await old_browser.close()
+            except Exception:
+                pass
+        context.user_data.pop("recording", None)
+
+        await _start_recording_for_admin(update, context, user)
         return
+
     if await db.is_globally_stopped():
         await update.message.reply_text("⛔ *البوت متوقف حالياً*", parse_mode=ParseMode.MARKDOWN)
         return
@@ -179,10 +260,17 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await db.clear_session(user.id)
-    b = context.bot_data.pop(f"browser_{user.id}", None)
+
+    ssh = context.user_data.pop("rec_ssh", None)
+    if ssh:
+        try: await ssh.close()
+        except Exception: pass
+    b = context.user_data.pop("rec_browser", None)
     if b:
         try: await b.close()
         except Exception: pass
+    context.user_data.pop("recording", None)
+
     await update.message.reply_text("🚫 تم الإلغاء.")
 
 
@@ -296,73 +384,8 @@ async def process_queue(chat_id, context):
 
 
 # ═══════════════════════════════════════════
-# Recording — تسجيل الشاشة
+# Recording — إيقاف فقط (البداية فـ /start)
 # ═══════════════════════════════════════════
-
-async def handle_rec_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء التسجيل — يفتح Chrome + VNC"""
-    query = update.callback_query
-    await query.answer()
-    user = update.effective_user
-    chat_id = query.message.chat_id
-
-    if not is_admin(user.id):
-        await query.message.edit_text("🚫 ADMIN فقط")
-        return
-
-    if context.user_data.get("recording"):
-        await query.message.edit_text("⚠️ التسجيل شغال بالفعل. اضغط ⏹️ للإيقاف")
-        return
-
-    await query.message.edit_text("🎬 جاري بدء التسجيل...")
-
-    from automation.browser import StealthBrowser
-    from automation.sshs8 import SSHS8
-
-    browser = StealthBrowser()
-    try:
-        ctx = await browser.start()
-        ssh = SSHS8(ctx, sender=None, user_tag=user.username or "admin")
-        ssh.set_chat(chat_id)
-        ssh.set_bot(context.bot)
-
-        ok = await ssh.start_recording()
-        if not ok:
-            await query.message.edit_text("❌ فشل بدء التسجيل")
-            await browser.close()
-            return
-
-        ok = await ssh.open_url("https://sshs8.com")
-        if not ok:
-            await query.message.edit_text("❌ فشل فتح الموقع")
-            await browser.close()
-            return
-
-        context.user_data["recording"] = True
-        context.user_data["rec_browser"] = browser
-        context.user_data["rec_ssh"] = ssh
-
-        railway_url = os.getenv("RAILWAY_PUBLIC_DOMAIN", "xxx.up.railway.app")
-        await query.message.edit_text(
-            f"🎬 *التسجيل بدا!*\n\n"
-            f"📱 *ادخل لـ VNC:*\n"
-            f"`https://{railway_url}/vnc.html`\n\n"
-            f"⏳ *خدم عادي فـ VNC*\n"
-            f"✅ *بعد ما تكمل، اضغط ⏹️ إيقاف التسجيل*",
-            parse_mode=ParseMode.MARKDOWN,
-        )
-
-    except Exception as e:
-        log.exception("فشل rec_start")
-        try:
-            await query.message.edit_text(f"❌ {str(e)[:300]}")
-        except Exception:
-            pass
-        try:
-            await browser.close()
-        except Exception:
-            pass
-
 
 async def handle_rec_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إيقاف التسجيل + بعث الملفات"""
@@ -404,11 +427,10 @@ async def handle_rec_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════
-# Protocol Flow (القديم — إلا بغيتو)
+# Protocol Flow
 # ═══════════════════════════════════════════
 
 async def handle_protocols(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """يعرض البروتوكولات — اختياري"""
     log.info("🚀 Protocols")
     query = update.callback_query
     user = update.effective_user
@@ -678,7 +700,7 @@ async def handle_admin_input(update, context, text):
 
 
 # ═══════════════════════════════════════════
-# button_handler — كل الأزرار
+# button_handler
 # ═══════════════════════════════════════════
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -688,10 +710,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     log.info(f"🔘 {data}")
 
-    # ✅ Recording
-    if data == "rec_start":
-        await handle_rec_start(update, context)
-        return
+    # ✅ إيقاف التسجيل فقط (البداية فـ /start)
     if data == "rec_stop":
         await handle_rec_stop(update, context)
         return
