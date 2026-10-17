@@ -1,3 +1,8 @@
+"""
+automation/browser.py
+- يشتغل headless=False فـ Xvfb
+- VNC على 5900
+"""
 import os
 from playwright.async_api import async_playwright
 from config import config
@@ -22,32 +27,16 @@ class StealthBrowser:
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
-            "--disable-software-rasterizer",
-            "--disable-accelerated-2d-canvas",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-infobars",
-            "--disable-extensions",
-            "--disable-plugins",
-            "--disable-sync",
-            "--disable-translate",
-            "--disable-default-apps",
-            "--disable-background-timer-throttling",
-            "--disable-renderer-backgrounding",
-            "--disable-backgrounding-occluded-windows",
-            "--mute-audio",
-            "--hide-scrollbars",
-            "--metrics-recording-only",
-            "--safebrowsing-disable-auto-update",
-            "--renderer-process-limit=1",
-            "--js-flags=--max-old-space-size=256",
             "--window-size=1280,720",
             f"--user-agent={config.USER_AGENT}",
         ]
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=config.CHROME_PROFILE_DIR,
-            headless=config.HEADLESS,
+            headless=False,  # ✅ مهم — باش يبان فـ VNC
             args=args,
             viewport={"width": 1280, "height": 720},
             user_agent=config.USER_AGENT,
@@ -61,11 +50,10 @@ class StealthBrowser:
         )
 
         await self.context.add_init_script(STEALTH_JS)
-
         self.context.set_default_timeout(config.PAGE_TIMEOUT)
         self.context.set_default_navigation_timeout(config.NAV_TIMEOUT)
 
-        log.info("✅ المتصفح جاهز")
+        log.info("✅ المتصفح جاهز (VNC على 5900)")
         return self.context
 
     async def close(self):
