@@ -1,6 +1,7 @@
 """
 utils/recorder.py
-- يسجل كل خطوة + Playwright Trace
+- كيسجل كل خطوة فـ المتصفح
+- Video recording + Playwright Trace
 """
 import os
 import asyncio
@@ -12,72 +13,144 @@ log = get_logger("Recorder")
 
 
 class BrowserRecorder:
-    def __init__(self, context, log_dir: str = "/tmp/recordings"):
+    def __init__(self, context=None, log_dir: str = "/tmp/recordings"):
         self.context = context
         self.log_dir = log_dir
         os.makedirs(log_dir, exist_ok=True)
         self.trace_active = False
-        self.step_counter = 0
-        self.steps = []
+        self.video_process = None
+        self.video_path = None
+        self.trace_path = None
+        self.start_time = None
         self.bot = None
         self.chat_id = None
+
+    def set_context(self, context):
+        self.context = context
 
     def set_bot(self, bot, chat_id):
         self.bot = bot
         self.chat_id = chat_id
 
-    async def start_recording(self):
+    async def start(self):
+        """يبدأ التسجيل (Trace + Video)"""
         try:
-            await self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
-            self.trace_active = True
-            log.info("🎬 Recording started")
-        except Exception as e:
-            log.error(f"❌ start_recording: {e}")
+            self.start_time = datetime.now()
 
-    async def stop_recording(self) -> str:
-        if not self.trace_active:
-            return None
+            # ✅ Trace
+            if self.context:
+                await self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
+                self.trace_active = True
+                log.info("🎬 Trace started")
+
+            # ✅ Video (ffmpeg)
+            self.video_path = os.path.join(self.log_dir, f"screen_{int(asyncio.get_event_loop().time()*1000)}.mp4")
+            try:
+                self.video_process = await asyncio.create_subprocess_exec(
+                    "ffmpeg", "-y",
+                    "-f", "x11grab",
+                    "-video_size", "1280x720",
+                    "-framerate", "10",
+                    "-i", ":99.0",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-crf", "30",
+                    self.video_path,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                log.info(f"🎬 Video started: {self.video_path}")
+            except Exception as e:
+                log.warning(f"⚠️ ffmpeg: {e}")
+
+            return True
+        except Exception as e:
+            log.error(f"❌ start: {e}")
+            return False
+
+    async def stop(self):
+        """يوقف التسجيل"""
         try:
-            path = os.path.join(self.log_dir, f"trace_{int(asyncio.get_event_loop().time()*1000)}.zip")
-            await self.context.tracing.stop(path=path)
-            self.trace_active = False
-            return path
-        except Exception as e:
-            log.error(f"❌ stop_recording: {e}")
-            return None
+            # ✅ Trace
+            if self.trace_active and self.context:
+                self.trace_path = os.path.join(self.log_dir, f"trace_{int(asyncio.get_event_loop().time()*1000)}.zip")
+                await self.context.tracing.stop(path=self.trace_path)
+                self.trace_active = False
+                log.info(f"✅ Trace stopped: {self.trace_path}")
 
-    async def add_step(self, action: str, selector: str = "", value: str = "", extra: dict = None):
-        self.step_counter += 1
-        step = {"num": self.step_counter, "time": datetime.now().strftime("%H:%M:%S"), "action": action, "selector": selector, "value": value}
-        if extra:
-            step.update(extra)
-        self.steps.append(step)
-        log.info(f"📝 Step {self.step_counter}: {action}")
+            # ✅ Video
+            if self.video_process:
+                self.video_process.terminate()
+                try:
+                    await asyncio.wait_for(self.video_process.wait(), timeout=10)
+                except asyncio.TimeoutError:
+                    self.video_process.kill()
+                log.info(f"✅ Video stopped: {self.video_path}")
+
+            return {
+                "trace": self.trace_path,
+                "video": self.video_path,
+            }
+        except Exception as e:
+            log.error(f"❌ stop: {e}")
+            return {}
 
     async def send_report(self):
+        """يبعت الملفات"""
         if not self.bot or not self.chat_id:
             return
+
         try:
-            lines = [f"📊 Browser Report", f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", f"📝 Steps: {len(self.steps)}", ""]
-            for s in self.steps:
-                lines.append(f"{s['num']:03d}. [{s['time']}] {s['action']}")
-                if s['selector']:
-                    lines.append(f"     → {s['selector']}")
-                if s['value']:
-                    lines.append(f"     → {s['value'][:80]}")
-                for k, v in s.items():
-                    if k not in ("num", "time", "action", "selector", "value"):
-                        lines.append(f"     {k}: {str(v)[:150]}")
-                lines.append("")
+            # ✅ التقرير النصي
+            duration = (datetime.now() - self.start_time).total_seconds() if self.start_time else 0
+            lines = [
+                "═" * 60,
+                f"📊 Recording Report",
+                f"⏰ Started: {self.start_time.strftime('%Y-%m-%d %H:%M:%S') if self.start_time else '-'}",
+                f"⏱️ Duration: {int(duration)}s",
+                "═" * 60,
+                "",
+            ]
+
+            # ✅ إرسال التقرير
             report_text = "\n".join(lines)
             bio = io.BytesIO(report_text.encode("utf-8"))
-            bio.name = "browser_steps.txt"
+            bio.name = "recording_info.txt"
             bio.seek(0)
-            await self.bot.send_document(chat_id=self.chat_id, document=bio, filename="browser_steps.txt", caption=f"📊 تقرير ({len(self.steps)} خطوة)")
-            zip_path = await self.stop_recording()
-            if zip_path and os.path.exists(zip_path):
-                with open(zip_path, "rb") as f:
-                    await self.bot.send_document(chat_id=self.chat_id, document=f, filename=os.path.basename(zip_path), caption="🎬 Playwright Trace")
+            await self.bot.send_document(
+                chat_id=self.chat_id,
+                document=bio,
+                filename="recording_info.txt",
+                caption=f"📊 معلومات التسجيل ({int(duration)}s)",
+            )
+
+            # ✅ إرسال Trace
+            if self.trace_path and os.path.exists(self.trace_path):
+                with open(self.trace_path, "rb") as f:
+                    await self.bot.send_document(
+                        chat_id=self.chat_id,
+                        document=f,
+                        filename=os.path.basename(self.trace_path),
+                        caption="🎬 Playwright Trace",
+                    )
+
+            # ✅ إرسال الفيديو
+            if self.video_path and os.path.exists(self.video_path):
+                size_mb = os.path.getsize(self.video_path) / (1024 * 1024)
+                if size_mb < 50:  # حد 50MB
+                    with open(self.video_path, "rb") as f:
+                        await self.bot.send_video(
+                            chat_id=self.chat_id,
+                            video=f,
+                            caption=f"🎥 تسجيل الشاشة ({size_mb:.1f}MB)",
+                        )
+                else:
+                    await self.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=f"⚠️ الفيديو كبير ({size_mb:.1f}MB) — ما نقدرش نبعثو",
+                    )
+
             log.info(f"✅ Report sent")
+
         except Exception as e:
             log.error(f"❌ send_report: {e}")
