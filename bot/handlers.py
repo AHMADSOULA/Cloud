@@ -83,6 +83,7 @@ async def handle_proto_selected(update: Update, context: ContextTypes.DEFAULT_TY
         await browser.close()
 
 async def handle_continent_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """المستخدم اختار القارة → نعرضو الدول"""
     query = update.callback_query
     await query.answer()
     idx = int(query.data.split(":")[1])
@@ -97,7 +98,7 @@ async def handle_continent_selected(update: Update, context: ContextTypes.DEFAUL
     countries = await ssh.open_continent(continent['name'])
     
     if not countries:
-        await query.message.edit_text("❌ ما لقيناش الدول. عاود جرب أو تحقق من الصورة.")
+        await query.message.edit_text("❌ ما لقيناش الدول. عاود جرب.")
         return
 
     context.user_data["countries"] = countries
@@ -108,6 +109,7 @@ async def handle_continent_selected(update: Update, context: ContextTypes.DEFAUL
     )
 
 async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """المستخدم اختار الدولة → البوت كيختار خادم عشوائي"""
     query = update.callback_query
     await query.answer()
     idx = int(query.data.split(":")[1])
@@ -120,20 +122,28 @@ async def handle_country_selected(update: Update, context: ContextTypes.DEFAULT_
     if not ssh or idx >= len(countries): return
 
     country = countries[idx]
-    await query.message.edit_text(f"⏳ جاري فتح {country['name']}...")
+    country_name = country.get('name') if isinstance(country, dict) else country
+    country_emoji = country.get('emoji', '🌍') if isinstance(country, dict) else '🌍'
     
-    servers = await ssh.open_country(country['name'])
+    await query.message.edit_text(f"⏳ جاري فتح {country_emoji} {country_name}...")
+    
+    servers = await ssh.open_country(country_name)
     if not servers:
-        await query.message.edit_text("❌ ما لقيناش خوادم.")
+        await query.message.edit_text(f"❌ ما لقيناش خوادم لـ {country_name}.")
         return
 
+    # ✅ نختارو عشوائي
     server = random.choice(servers)
-    await query.message.edit_text(f"🎲 *اختيار عشوائي*\n\n🖥️ {server['id']}\n\n⏳ جاري إنشاء الحساب...")
+    await query.message.edit_text(f"🎲 *اختيار عشوائي*\n\n{country_emoji} {country_name}\n🖥️ {server['id']}\n\n⏳ جاري إنشاء الحساب...")
 
     result = await ssh.create_account(server['href'])
     
     if result.get("success"):
-        await context.bot.send_message(chat_id, f"✅ *تم إنشاء الحساب!*\n🌐 Host: `{result.get('ip')}`\n👤 User: `{result.get('user')}`\n🔑 Pass: `{result.get('password')}`", parse_mode=ParseMode.MARKDOWN)
+        await context.bot.send_message(
+            chat_id, 
+            f"✅ *تم إنشاء الحساب!*\n🌐 Host: `{result.get('ip')}`\n👤 User: `{result.get('user')}`\n🔑 Pass: `{result.get('password')}`", 
+            parse_mode=ParseMode.MARKDOWN
+        )
         
         for kind in ["youtube", "snapchat"]:
             if "SSH" in proto_name:
