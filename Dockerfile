@@ -1,18 +1,33 @@
 FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# تثبيت Xvfb + VNC + noVNC + supervisor
+RUN apt-get update && apt-get install -y \
+    xvfb \
+    x11vnc \
+    novnc \
+    websockify \
+    supervisor \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN mkdir -p /tmp/logs /tmp/chrome_profile
-
+# Requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Playwright Chromium
 RUN playwright install chromium
+RUN playwright install-deps chromium
 
+# Copy project
 COPY . .
 
-CMD ["python", "main.py"]
+# Supervisor config
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Display
+ENV DISPLAY=:99
+
+# Start
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
