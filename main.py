@@ -14,14 +14,21 @@ async def post_init(app):
 
 async def route_text(update, context):
     text = update.message.text or ""
-    # ✅ إلا كان المستخدم فـ وضع التحويل
-    if context.user_data.get("convert_service"):
-        await handlers.handle_conversion_input(update, context)
-    # ✅ إلا صيفط رابط SSO
-    elif extract_urls(text):
+    
+    # ✅ إلا كان فـ وضع تحويل SSH
+    if await handlers.handle_ssh_conversion_input(update, context):
+        return
+        
+    # ✅ إلا كان فـ وضع الأدوات القديمة (حظر، إشعار، إلخ)
+    if await handlers.handle_admin_input(update, context, text):
+        return
+
+    # ✅ إلا صيفط رابط SSO (Cloud Run)
+    if extract_urls(text):
         await handlers.handle_url(update, context)
-    else:
-        await update.message.reply_text("ℹ️ أرسل /start للبدء.")
+        return
+
+    await update.message.reply_text("ℹ️ أرسل /start للبدء.")
 
 def main():
     app = Application.builder().token(config.BOT_TOKEN).post_init(post_init).build()
