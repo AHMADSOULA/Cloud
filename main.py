@@ -15,15 +15,20 @@ async def post_init(app):
 async def route_text(update, context):
     text = update.message.text or ""
     
-    # ✅ إلا كان فـ وضع تحويل SSH
+    # ✅ معالجة ملف Ooredoo
+    if update.message.document:
+        if await handlers.process_ooredoo_file(update, context):
+            return
+
+    # ✅ معالجة تحويل SSH
     if await handlers.handle_ssh_conversion_input(update, context):
         return
         
-    # ✅ إلا كان فـ وضع الأدوات القديمة (حظر، إشعار، إلخ)
+    # ✅ معالجة أزرار الأدمن
     if await handlers.handle_admin_input(update, context, text):
         return
 
-    # ✅ إلا صيفط رابط SSO (Cloud Run)
+    # ✅ معالجة رابط SSO
     if extract_urls(text):
         await handlers.handle_url(update, context)
         return
@@ -38,7 +43,7 @@ def main():
     app.add_handler(CommandHandler("cancel", handlers.cancel_cmd))
     app.add_handler(CommandHandler("request", handlers.request_cmd))
     app.add_handler(CallbackQueryHandler(handlers.button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, route_text))
+    app.add_handler(MessageHandler(filters.TEXT | filters.Document.ALL, route_text))
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
