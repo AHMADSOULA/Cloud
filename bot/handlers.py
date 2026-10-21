@@ -14,6 +14,7 @@ from config import config
 from automation.browser import StealthBrowser
 from automation.sso_flow import run_sso_flow
 from automation.vmess import build_ssh_dark
+from automation.ooredoo_api import login_ooredoo # استيراد دالة Ooredoo الجديدة
 
 log = get_logger("Handlers")
 
@@ -139,7 +140,77 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await browser.close()
 
 # ═══════════════════════════════════════════
-# ADMIN & Ooredoo & SSH
+# Ooredoo Login New Flow
+# ═══════════════════════════════════════════
+
+async def ooredoo_login_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return
+    context.user_data["ooredoo_login"] = {}
+    await update.message.reply_text(
+        "👋 أهلاً بك في بوت تسجيل الدخول إلى My Ooredoo.\n\n"
+        "أرسل رقم هاتفك بصيغة دولية بدون + (مثال: `213554924120`).",
+        parse_mode="Markdown"
+    )
+
+async def ooredoo_login_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return False
+    if "ooredoo_login" not in context.user_data or "username" in context.user_data["ooredoo_login"]:
+        return False
+    
+    username = update.message.text.strip().replace("+", "").replace(" ", "")
+    if not username.isdigit() or len(username) < 9:
+        await update.message.reply_text("⚠️ الرقم غير صالح. أرسل رقم هاتف صحيح (مثال: 213554924120).")
+        return True
+
+    context.user_data["ooredoo_login"]["username"] = username
+    await update.message.reply_text(
+        f"✅ تم حفظ الرقم: `{username}`\n\n"
+        "🔑 الآن أرسل كلمة المرور.",
+        parse_mode="Markdown"
+    )
+    return True
+
+async def ooredoo_login_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return False
+    if "ooredoo_login" not in context.user_data or "password" in context.user_data["ooredoo_login"]:
+        return False
+    
+    password = update.message.text.strip()
+    if not password:
+        await update.message.reply_text("⚠️ أرسل كلمة مرور صالحة.")
+        return True
+
+    # حذف رسالة كلمة المرور
+    try: await update.message.delete()
+    except: pass
+
+    username = context.user_data["ooredoo_login"].get("username")
+    msg = await update.message.reply_text("⏳ جاري محاولة تسجيل الدخول...")
+
+    result = await login_ooredoo(username, password)
+
+    if result["success"]:
+        token_preview = result["access_token"][:40] + "..."
+        await msg.edit_text(
+            "✅ *تم تسجيل الدخول بنجاح!*\n\n"
+            f"👤 المستخدم: `{username}`\n"
+            f"💰 الرصيد: `{result.get('balance')}`\n"
+            f"🔐 الصلاحية: {result.get('expires_in', 0) // 86400} يوم\n"
+            f"🔑 Access Token:\n`{token_preview}`",
+            parse_mode="Markdown",
+        )
+    else:
+        await msg.edit_text(
+            "❌ *فشل تسجيل الدخول*\n\n"
+            f"السبب: `{result.get('error', 'غير معروف')}`",
+            parse_mode="Markdown",
+        )
+
+    context.user_data.pop("ooredoo_login", None)
+    return True
+
+# ═══════════════════════════════════════════
+# ADMIN & SSH
 # ═══════════════════════════════════════════
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,8 +233,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "152.228.162.19:22@u1595199941:U6CqrexXyK"
         )
     elif data == "admin_ooredoo":
-        context.user_data["await_ooredoo_file"] = True
-        await query.message.edit_text("📁 أرسل الملف الآن (TXT يحتوي على user:pass فـ كل سطر).")
+        # بدلاً من رفع ملف، سنقوم بتشغيل تسجيل الدخول
+        await ooredoo_login_start(update, context)
+        await query.message.delete()
     elif data == "admin_stats":
         await query.message.edit_text("📊 الإحصائيات مازال ما تبرمجتش.")
     elif data == "admin_users":
@@ -212,85 +284,6 @@ async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFA
         await update.message.reply_document(document=bio, filename=filename)
     except Exception as e:
         await update.message.reply_text(f"❌ خطأ: {e}\nتأكد من الشكل: IP:Port@User:Pass")
-    return True
-
-async def process_ooredoo_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("await_ooredoo_file"): return False
-        
-    context.user_data.pop("await_ooredoo_file", None)
-    file = update.message.document
-    
-    if not file or not file.file_name.endswith(".txt"):
-        await update.message.reply_text("❌ أرسل ملف TXT فقط.")
-        return True
-
-    msg = await update.message.reply_text("⏳ جاري تحميل الملف وبدء الفحص...")
-    
-    try:
-        file_obj = await file.get_file()
-        content = (await file_obj.download_as_bytearray()).decode("utf-8", errors="ignore")
-        lines = content.splitlines()
-        
-        accounts_to_check = []
-        for line in lines:
-            line = line.strip()
-            if line and ":" in line:
-                parts = line.split(":", 1)
-                accounts_to_check.append((parts[0].strip(), parts[1].strip()))
-        
-        total = len(accounts_to_check)
-        if total == 0:
-            await msg.edit_text("❌ الملف فارغ أو لا يحتوي على الصيغة الصحيحة (user:pass).")
-            return True
-
-        await msg.edit_text(f"⏳ تم العثور على {total} حساب. جاري الفحص...")
-
-        # استيراد الكلاس الجديد الذي يعتمد على curl_cffi
-        from automation.ooredoo_api import OoredooAPI
-        
-        checker = OoredooAPI()
-        
-        for index, (user, pwd) in enumerate(accounts_to_check):
-            try:
-                await msg.edit_text(f"⏳ جاري الفحص... {index + 1}/{total}")
-            except:
-                pass
-            
-            # ✅ تشغيل الفحص في Thread منفصل لتجنب تجميد البوت
-            result = await asyncio.to_thread(checker.check_account, user, pwd)
-            
-            # إرسال رسالة فورية لكل حساب
-            if result["success"]:
-                res_text = (
-                    f"✅ <b>حساب يعمل:</b>\n\n"
-                    f"👤 <b>المستخدم:</b> <code>{result['user']}</code>\n"
-                    f"🔑 <b>كلمة المرور:</b> <code>{result['pass']}</code>\n"
-                    f"💰 <b>الرصيد:</b> <code>{result['balance']}</code>"
-                )
-            else:
-                detail = f"\n🔍 <b>التشخيص:</b> <i>{result['error_detail']}</i>" if result['error_detail'] else ""
-                res_text = (
-                    f"❌ <b>حساب فاشل:</b>\n\n"
-                    f"👤 <b>المستخدم:</b> <code>{result['user']}</code>\n"
-                    f"🔑 <b>كلمة المرور:</b> <code>{result['pass']}</code>\n"
-                    f"⚠️ <b>السبب:</b> <code>{result['balance']}</code>{detail}"
-                )
-                
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id, 
-                text=res_text, 
-                parse_mode="HTML"
-            )
-            
-            # تأخير بين كل حساب لتجنب الحظر
-            await asyncio.sleep(5)
-            
-        await msg.edit_text("✅ تم الانتهاء من فحص جميع الحسابات.")
-        
-    except Exception as e:
-        log.error(f"خطأ في فحص Ooredoo: {e}")
-        await msg.edit_text(f"❌ خطأ: {e}")
-        
     return True
 
 async def handle_admin_input(update, context, text):
