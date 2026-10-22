@@ -3,18 +3,17 @@ import io
 import base64
 import json
 import os
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from bot import messages
-from bot.keyboards import main_menu, admin_menu
+from bot.keyboards import main_menu, admin_menu, ssh_countries_menu
 from database import db
 from utils.helpers import extract_urls
 from utils.logger import get_logger
 from config import config
 from automation.browser import StealthBrowser
 from automation.sso_flow import run_sso_flow
-from automation.vmess import build_ssh_dark
-from automation.ooredoo_api import login_ooredoo # استيراد دالة Ooredoo الجديدة
+from automation.sshs8 import SSHS8
 
 log = get_logger("Handlers")
 
@@ -140,77 +139,109 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await browser.close()
 
 # ═══════════════════════════════════════════
-# Ooredoo Login New Flow
+# SSH WebSocket
 # ═══════════════════════════════════════════
 
-async def ooredoo_login_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id): return
-    context.user_data["ooredoo_login"] = {}
-    await update.message.reply_text(
-        "👋 أهلاً بك في بوت تسجيل الدخول إلى My Ooredoo.\n\n"
-        "أرسل رقم هاتفك بصيغة دولية بدون + (مثال: `213554924120`).",
-        parse_mode="Markdown"
-    )
-
-async def ooredoo_login_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id): return False
-    if "ooredoo_login" not in context.user_data or "username" in context.user_data["ooredoo_login"]:
-        return False
+async def handle_ssh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    log.info("🔐 SSH WebSocket clicked")
+    query = update.callback_query
+    user = update.effective_user
     
-    username = update.message.text.strip().replace("+", "").replace(" ", "")
-    if not username.isdigit() or len(username) < 9:
-        await update.message.reply_text("⚠️ الرقم غير صالح. أرسل رقم هاتف صحيح (مثال: 213554924120).")
-        return True
+    if not await db.has_access(user.id):
+        await query.message.reply_text("🔒 ما عندكش صلاحية.")
+        return
 
-    context.user_data["ooredoo_login"]["username"] = username
-    await update.message.reply_text(
-        f"✅ تم حفظ الرقم: `{username}`\n\n"
-        "🔑 الآن أرسل كلمة المرور.",
-        parse_mode="Markdown"
-    )
-    return True
-
-async def ooredoo_login_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id): return False
-    if "ooredoo_login" not in context.user_data or "password" in context.user_data["ooredoo_login"]:
-        return False
+    msg = await context.bot.send_message(chat_id=query.message.chat_id, text="⏳ انتظر...")
     
-    password = update.message.text.strip()
-    if not password:
-        await update.message.reply_text("⚠️ أرسل كلمة مرور صالحة.")
-        return True
+    try:
+        from automation.sshs8 import SSHS8, KNOWN_COUNTRIES
+    except Exception as e:
+        await msg.edit_text(f"❌ خطأ: {e}")
+        return
 
-    # حذف رسالة كلمة المرور
-    try: await update.message.delete()
-    except: pass
+    browser = StealthBrowser()
+    try:
+        ctx = await browser.start()
+        ssh = SSHS8(ctx, sender=None, user_tag=user.username or user.first_name)
 
-    username = context.user_data["ooredoo_login"].get("username")
-    msg = await update.message.reply_text("⏳ جاري محاولة تسجيل الدخول...")
+        countries = await ssh.open_ssh_websocket()
+        if not countries:
+            countries = KNOWN_COUNTRIES
 
-    result = await login_ooredoo(username, password)
+        context.user_data["ssh_countries"] = countries
+        context.user_data["ssh_obj"] = ssh
+        context.user_data["ssh_browser"] = browser
 
-    if result["success"]:
-        token_preview = result["access_token"][:40] + "..."
-        await msg.edit_text(
-            "✅ *تم تسجيل الدخول بنجاح!*\n\n"
-            f"👤 المستخدم: `{username}`\n"
-            f"💰 الرصيد: `{result.get('balance')}`\n"
-            f"🔐 الصلاحية: {result.get('expires_in', 0) // 86400} يوم\n"
-            f"🔑 Access Token:\n`{token_preview}`",
-            parse_mode="Markdown",
+        kb = ssh_countries_menu(countries)
+        try:
+            await msg.edit_text("🌍 *اختر الدولة:*", parse_mode="Markdown", reply_markup=kb)
+        except Exception:
+            pass
+    except Exception as e:
+        await msg.edit_text(f"❌ فشل: {str(e)[:300]}")
+        try: await browser.close()
+        except: pass
+
+async def ssh_country_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user = update.effective_user
+    idx = int(query.data.split(":")[1])
+
+    countries = context.user_data.get("ssh_countries", [])
+    ssh = context.user_data.get("ssh_obj")
+    browser = context.user_data.get("ssh_browser")
+
+    if not ssh or idx >= len(countries):
+        await query.message.reply_text("❌ انتهت الجلسة.")
+        return
+
+    country = countries[idx]
+    await query.message.edit_text(f"⏳ جاري إنشاء حساب {country}...")
+
+    try:
+        result = await ssh.create_account(country)
+        if not result.get("success"):
+            await query.message.edit_text("❌ فشل إنشاء الحساب.")
+            return
+
+        host = result.get("host")
+        username = result.get("username")
+        password = result.get("password")
+
+        from automation.vmess import build_ssh_dark
+        new_uri = build_ssh_dark(host, username, password, kind="youtube")
+
+        if not new_uri:
+            await query.message.edit_text("❌ فشل بناء ملف dark.")
+            return
+
+        bio = io.BytesIO(new_uri.encode("utf-8"))
+        bio.name = f"SSH_{country}.dark"
+        bio.seek(0)
+
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=bio,
+            filename=bio.name,
+            caption=f"✅ SSH Account\n🌍 {country}\n🖥️ Host: {host or '-'}\n🔌 Port: 22\n👤 User: {username}\n🔑 Pass: {password}"
         )
-    else:
-        await msg.edit_text(
-            "❌ *فشل تسجيل الدخول*\n\n"
-            f"السبب: `{result.get('error', 'غير معروف')}`",
-            parse_mode="Markdown",
-        )
 
-    context.user_data.pop("ooredoo_login", None)
-    return True
+        context.user_data.pop("ssh_countries", None)
+        context.user_data.pop("ssh_obj", None)
+        context.user_data.pop("ssh_browser", None)
+
+        try: await ssh.close()
+        except: pass
+        try: await browser.close()
+        except: pass
+
+        await query.message.delete()
+    except Exception as e:
+        await query.message.reply_text(f"❌ فشل: {str(e)[:300]}")
 
 # ═══════════════════════════════════════════
-# ADMIN & SSH
+# ADMIN
 # ═══════════════════════════════════════════
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,23 +250,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     data = query.data
 
-    if data == "back_main":
-        await query.message.edit_text(messages.WELCOME_ADMIN, parse_mode="Markdown", reply_markup=main_menu(True))
+    if data == "ssh_ws":
+        await handle_ssh(update, context)
+    elif data.startswith("ssh_country:"):
+        await ssh_country_handler(update, context)
+    elif data == "back_main":
+        if is_admin(user.id):
+            await query.message.edit_text(messages.WELCOME_ADMIN, parse_mode="Markdown", reply_markup=main_menu(True))
+    elif data.startswith("admin") and not is_admin(user.id):
+        await query.message.reply_text("🚫 ماشي ADMIN")
     elif data == "admin":
         await query.message.edit_text("⚙️ ADMIN PANEL", reply_markup=admin_menu())
-    elif data == "admin_convert_ssh":
-        context.user_data["await_convert_ssh"] = True
-        await query.message.edit_text(
-            "🔐 تحويل SSH\n\n"
-            "أرسل المعلومات بالشكل التالي:\n"
-            "IP:Port@User:Pass\n\n"
-            "مثال:\n"
-            "152.228.162.19:22@u1595199941:U6CqrexXyK"
-        )
-    elif data == "admin_ooredoo":
-        # بدلاً من رفع ملف، سنقوم بتشغيل تسجيل الدخول
-        await ooredoo_login_start(update, context)
-        await query.message.delete()
     elif data == "admin_stats":
         await query.message.edit_text("📊 الإحصائيات مازال ما تبرمجتش.")
     elif data == "admin_users":
@@ -265,26 +290,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_start_all":
         await db.set_global_stop(False)
         await query.message.edit_text("▶️ تشغيل للجميع", reply_markup=admin_menu())
-
-async def handle_ssh_conversion_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("await_convert_ssh"): return False
-    text = update.message.text.strip()
-    context.user_data.pop("await_convert_ssh", None)
-    try:
-        parts = text.split("@")
-        host, port = parts[0].split(":")
-        user, password = parts[1].split(":")
-        
-        uri = build_ssh_dark(host, user, password, kind="youtube")
-        if not uri: raise ValueError("فشل بناء الملف")
-        
-        filename = f"SSH_{host}.dark"
-        bio = io.BytesIO(uri.encode())
-        bio.name = filename
-        await update.message.reply_document(document=bio, filename=filename)
-    except Exception as e:
-        await update.message.reply_text(f"❌ خطأ: {e}\nتأكد من الشكل: IP:Port@User:Pass")
-    return True
 
 async def handle_admin_input(update, context, text):
     mode = context.user_data.get("await")
