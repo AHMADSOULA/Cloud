@@ -4,6 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 def main_menu(is_admin: bool = False):
     rows = [
         [InlineKeyboardButton("📊 حالتي", callback_data="status")],
+        [InlineKeyboardButton("🔐 SSH WebSocket", callback_data="ssh_ws")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton("⚙️ ADMIN", callback_data="admin")])
@@ -12,8 +13,6 @@ def main_menu(is_admin: bool = False):
 
 def admin_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔐 تحويل SSH", callback_data="admin_convert_ssh")],
-        [InlineKeyboardButton("📊 سحب حسابات Ooredoo", callback_data="admin_ooredoo")],
         [InlineKeyboardButton("📊 إحصائيات بوت", callback_data="admin_stats")],
         [InlineKeyboardButton("👥 مستخدمين حالياً", callback_data="admin_users")],
         [InlineKeyboardButton("🚫 محظورين من بوت", callback_data="admin_banned")],
@@ -34,22 +33,5 @@ def ssh_countries_menu(countries: list):
     rows = []
     for i, c in enumerate(countries[:60]):
         rows.append([InlineKeyboardButton(c, callback_data=f"ssh_country:{i}")])
-    rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
-    return InlineKeyboardMarkup(rows)
-
-
-def list_menu(items: list, prefix: str):
-    """قائمة عامة (للدول والقارات)"""
-    rows = []
-    for idx, item in enumerate(items):
-        if isinstance(item, dict):
-            name = item.get('name', '')
-            emoji = item.get('emoji', '')
-            display = f"{emoji} {name}" if emoji else f"🌍 {name}"
-        else:
-            display = str(item)
-        if len(display) > 60:
-            display = display[:57] + "..."
-        rows.append([InlineKeyboardButton(display, callback_data=f"{prefix}:{idx}")])
     rows.append([InlineKeyboardButton("🔙 رجوع", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
