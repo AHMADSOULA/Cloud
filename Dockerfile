@@ -1,20 +1,21 @@
-FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
+FROM python:3.12-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC
-ENV HEADLESS=true
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    net-tools tzdata \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN playwright install chromium
-RUN playwright install-deps chromium
+RUN python -m playwright install --with-deps chromium
 
 COPY . .
 
