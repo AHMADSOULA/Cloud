@@ -1,0 +1,16 @@
+services:
+  - type: worker
+    name: cloud-main-bot
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        value: "7119011124"
+      - key: HEADLESS
+        value: "true"
+      - key: DEFAULT_IMAGE
+        value: "docker.io/ajndjd2/ahmed-vip1"
